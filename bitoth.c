@@ -122,6 +122,8 @@ bool play3(int x,uint64_t *myb,uint64_t *opb) {
 
 int8_t **deps4[64];
 uint64_t **masks4[64];
+uint64_t *masks44[64];
+uint64_t *masks45[64];
 void init_deps4() {
   for (int i=0;i<64;i++) {
     int n=0;
@@ -133,23 +135,32 @@ void init_deps4() {
     else {
       deps4[i]=(int8_t **)calloc(n+1,sizeof(int8_t*));
       masks4[i]=(uint64_t **)calloc(n,sizeof(uint64_t*));
+      masks44[i]=(uint64_t *)calloc(n,sizeof(uint64_t));
+      masks45[i]=(uint64_t *)calloc(n,sizeof(uint64_t));
       deps4[i][n]=NULL;
       int j=0,k=0;
       while (k<n) {
         if (dep[i][j][0]>=0) {
           int nb;
           uint64_t masks[8];
+          uint64_t mask=0;
           for (nb=0;nb<8;nb++) {
             if (dep[i][j][nb]<0) break;
             else {
-              if (nb>0) masks[nb]=masks[nb-1]|((uint64_t)1<<dep[i][j][nb]);
-              else masks[nb]=((uint64_t)1<<dep[i][j][nb]);
+              if (nb>0) {
+                masks[nb]=masks[nb-1]|((uint64_t)1<<dep[i][j][nb]);
+                mask|=((uint64_t)1<<dep[i][j][nb]);
+              }
+              else
+                masks[nb]=((uint64_t)1<<dep[i][j][nb]);
 	    }
 	  }
 	  deps4[i][k]=(int8_t *)calloc(nb+1,sizeof(int8_t));
           masks4[i][k]=(uint64_t *)calloc(nb,sizeof(uint64_t));
           memcpy(deps4[i][k],&dep[i][j][0],(nb+1)*sizeof(int8_t));
           memcpy(masks4[i][k],&masks[0],nb*sizeof(uint64_t));
+          masks44[i][k]=mask;
+          masks45[i][k]=masks[nb-1];
           k++;
         }
         j++;
@@ -259,6 +270,36 @@ bool play5(int x,uint64_t *myb,uint64_t *opb) {
   if (valid) SET(*myb,x);
   return valid;
 }
+
+bool play8(int x,uint64_t *myb,uint64_t *opb) {
+  bool valid=false;
+  int8_t** curi;
+  curi=deps4[x];
+  for (int i=0;curi[i]!=NULL;i++) {
+    int8_t j=*curi[i];
+    if (IS_SET(*opb,j)) {
+      uint64_t m=*myb&masks44[x][i];
+      if (m>0) {
+        int n;
+        if (j>x) {
+          n =__builtin_ctzl(m);
+          m=(((uint64_t)1<<n)-1)&masks45[x][i];
+        }
+        else {
+          n =__builtin_clzl(m);
+        }
+        if ((m&*opb)==m) {
+          valid=true;
+          *opb^=m;
+          *myb^=m;
+        }
+      }
+    }
+  }
+  if (valid) SET(*myb,x);
+  return valid;
+}
+
 bool play6(int x,uint64_t *myb,uint64_t *opb) {
   bool valid=false;
   int8_t** curi;
@@ -501,7 +542,7 @@ void init_all() {
       for (int k=0;k<deps3[i].tab[j].nb;k++)
         printf("%d ",deps3[i].tab[j].t[k]);
       printf("\n");
-      printf("(%d,%d):",i,j);
+      printf("(%d,%d\n%064lb\n%064lb):",i,j,masks44[i][j],masks45[i][j]);
       int8_t *curj=*curi;
       while (*curj>=0) {printf("%d ",*curj);curj++;}
       printf("\n");
