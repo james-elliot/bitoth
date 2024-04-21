@@ -139,12 +139,14 @@ void init_deps4() {
         if (dep[i][j][0]>=0) {
           int nb;
           uint64_t masks[8];
-          for (nb=0;nb<8;nb++)
+          for (nb=0;nb<8;nb++) {
             if (dep[i][j][nb]<0) break;
-            else
-              if (nb>0) masks[nb]=masks[nb-1]|(1<<dep[i][j][nb]);
-              else masks[nb]=(1<<dep[i][j][nb]);
-          deps4[i][k]=(int8_t *)calloc(nb+1,sizeof(int8_t));
+            else {
+              if (nb>0) masks[nb]=masks[nb-1]|((uint64_t)1<<dep[i][j][nb]);
+              else masks[nb]=((uint64_t)1<<dep[i][j][nb]);
+	    }
+	  }
+	  deps4[i][k]=(int8_t *)calloc(nb+1,sizeof(int8_t));
           masks4[i][k]=(uint64_t *)calloc(nb,sizeof(uint64_t));
           memcpy(deps4[i][k],&dep[i][j][0],(nb+1)*sizeof(int8_t));
           memcpy(masks4[i][k],&masks[0],nb*sizeof(uint64_t));
@@ -174,8 +176,8 @@ void init_deps7() {
         for (int nb=0;nb<8;nb++) {
           deps7[i][n].t[nb]=dep[i][j][nb];
           if (dep[i][j][nb]<0) break;
-          if (nb>0) deps7[i][n].mask[nb]=deps7[i][n].mask[nb-1]|(1<<dep[i][j][nb]);
-          else deps7[i][n].mask[nb]=(1<<dep[i][j][nb]);
+          if (nb>0) deps7[i][n].mask[nb]=deps7[i][n].mask[nb-1]|((uint64_t)1<<dep[i][j][nb]);
+          else deps7[i][n].mask[nb]=((uint64_t)1<<dep[i][j][nb]);
         }
         n++;
       }
@@ -409,7 +411,7 @@ void display(uint64_t wb,uint64_t bb) {
 }
 
 #define NB_BITS_H 25
-#define SIZE_H (1<<NB_BITS_H)
+#define SIZE_H ((uint64_t)1<<NB_BITS_H)
 #define MASK_H (SIZE_H-1)
 
 struct
