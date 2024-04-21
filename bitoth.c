@@ -159,9 +159,8 @@ void init_deps4() {
 }
 
 typedef struct
-__attribute__((packed))
+//__attribute__((packed))
 _dep7 {
-  bool valid;
   int8_t t[8];
   uint64_t mask[8];
 } dep7;
@@ -172,7 +171,6 @@ void init_deps7() {
     int n=0;
     for (int j=0;j<8;j++) {
       if (dep[i][j][0]>=0) {
-        deps7[i][n].valid=true;
         for (int nb=0;nb<8;nb++) {
           deps7[i][n].t[nb]=dep[i][j][nb];
           if (dep[i][j][nb]<0) break;
@@ -182,7 +180,31 @@ void init_deps7() {
         n++;
       }
     }
+    deps7[i][n].t[0]=-1;
   }
+}
+bool play7(int x,uint64_t *myb,uint64_t *opb) {
+  bool valid=false;
+  dep7 *d=deps7[x];
+  for (int i=0;i<8;i++) {
+    int8_t *t=d[i].t;
+    if (t[0]<0) break;
+    if (IS_SET(*opb,t[0])) {
+      for (int j=1;t[j]>=0;j++) {
+        if (!IS_SET(*opb,t[j])) {
+          if (IS_SET(*myb,t[j])) {
+            valid=true;
+            j--;
+            *opb^=d[i].mask[j];
+            *myb^=d[i].mask[j];
+          }
+          break;
+        }
+      }
+    }
+  }
+  if (valid) SET(*myb,x);
+  return valid;
 }
 
 bool play4(int x,uint64_t *myb,uint64_t *opb) {
@@ -617,13 +639,15 @@ int main(int argc, char **argv) {
   init_all();
   if (argc==2) {
     set_pos(argv[1],&wb,&bb);
+    /*
     play5(40,&wb,&bb);
     display(wb,bb);
     exit(-1);
+    */
     uint64_t n;
     n=0;
     clock_t t1;
-    double f1=0,f2=0,f3=0,f4=0,f5=0,f6=0,f;
+    double f1=0,f2=0,f3=0,f4=0,f5=0,f6=0,f7=0,f;
     int nb=10000000;
     for (uint64_t j=0;j<10;j++) {
       t1=clock();
@@ -649,7 +673,10 @@ int main(int argc, char **argv) {
       for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play6);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f6+=f;
-      printf("%ld f1=%5.2f f2=%5.2f f3=%5.2f f4=%5.2f f5=%5.2f f6=%5.2f\n",n,f1,f2,f3,f4,f5,f6);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play7);
+      f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
+      f7+=f;
+      printf("%15ld f1=%6.2f f2=%6.2f f3=%6.2f f4=%6.2f f5=%6.2f f6=%6.2f f7=%6.2f\n",n,f1,f2,f3,f4,f5,f6,f7);
     }
     exit(-1);
   }
@@ -696,7 +723,7 @@ int main(int argc, char **argv) {
         }
         uint64_t nwb=wb,nbb=bb;
         printf("coucou\n");
-        play5(x+8*y,&nwb,&nbb);
+        play7(x+8*y,&nwb,&nbb);
         play(x,y,&wb,&bb);
         display(wb,bb);
         fflush(stdout);
