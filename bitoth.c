@@ -286,9 +286,11 @@ bool play8(int x,uint64_t *myb,uint64_t *opb) {
           m=(((uint64_t)1<<n)-1)&masks45[x][i];
         }
         else {
-          n =__builtin_clzl(m);
+          n =64-__builtin_clzl(m);
+          m= ~(((uint64_t)1<<n)-1);
+          m=m&masks45[x][i];
         }
-        if ((m&*opb)==m) {
+        if ((*opb&m)==m) {
           valid=true;
           *opb^=m;
           *myb^=m;
