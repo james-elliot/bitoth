@@ -282,14 +282,14 @@ bool play8(int x,uint64_t *myb,uint64_t *opb) {
       if (m>0) {
         int n;
         if (j>x) {
-          n =__builtin_ctzl(m);
-          m=(((uint64_t)1<<n)-1)&masks45[x][i];
+          n=__builtin_ctzl(m);
+          m=(((uint64_t)1<<n)-1);
         }
         else {
-          n =64-__builtin_clzl(m);
-          m= ~(((uint64_t)1<<n)-1);
-          m=m&masks45[x][i];
+          n=64-__builtin_clzl(m);
+          m=~(((uint64_t)1<<n)-1);
         }
+        m&=masks45[x][i];
         if ((*opb&m)==m) {
           valid=true;
           *opb^=m;
@@ -690,13 +690,14 @@ int main(int argc, char **argv) {
     uint64_t n;
     n=0;
     clock_t t1;
-    double f1=0,f2=0,f3=0,f4=0,f5=0,f6=0,f7=0,f;
+    double f1=0,f2=0,f3=0,f4=0,f5=0,f6=0,f7=0,f,f8=0;
     int nb=10000000;
     for (uint64_t j=0;j<10;j++) {
       t1=clock();
       for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,playb);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f1+=f;
+      t1=clock();
       for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play2);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f2+=f;
@@ -716,10 +717,16 @@ int main(int argc, char **argv) {
       for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play6);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f6+=f;
+      t1=clock();
       for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play7);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f7+=f;
-      printf("%15ld f1=%6.2f f2=%6.2f f3=%6.2f f4=%6.2f f5=%6.2f f6=%6.2f f7=%6.2f\n",n,f1,f2,f3,f4,f5,f6,f7);
+      t1=clock();
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play8);
+      f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
+      f8+=f;
+      printf("%15ld f1=%6.2f f2=%6.2f f3=%6.2f f4=%6.2f f5=%6.2f f6=%6.2f f7=%6.2f f8=%6.2f\n",
+             n,f1,f2,f3,f4,f5,f6,f7,f8);
     }
     exit(-1);
   }
@@ -766,7 +773,7 @@ int main(int argc, char **argv) {
         }
         uint64_t nwb=wb,nbb=bb;
         printf("coucou\n");
-        play7(x+8*y,&nwb,&nbb);
+        play8(x+8*y,&nwb,&nbb);
         play(x,y,&wb,&bb);
         display(wb,bb);
         fflush(stdout);
