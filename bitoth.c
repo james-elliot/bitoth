@@ -537,6 +537,7 @@ void init_all() {
   init_dep3();
   init_deps4();
   init_deps7();
+  /*
   for (int i=0;i<64;i++) {
     int8_t **curi=deps4[i];
     for (int j=0;j<deps3[i].nb;j++) {
@@ -555,6 +556,7 @@ void init_all() {
       exit(-1);
     }
   }
+  */
   init_idx();
   init_hash();
   init_masks();
@@ -590,31 +592,17 @@ int ab(uint64_t myb,uint64_t opb,
   if (depth>=maxdepth) return eval(myb,opb);
   uint32_t ind = compute_ind(myb,opb);
   int nsq=find_hash(myb,opb,ind);
-  if (nsq>=0) {
-    uint64_t nmyb=myb,nopb=opb;
-    if (play2(nsq,&nmyb,&nopb)) {
-      lpass=false;
-      int v = -ab(nopb,nmyb,-b,-a,depth+1,mindepth,maxdepth,false);
-      if (v>a) {
-        if (depth==mindepth) best_move=nsq;
-        lmove=nsq;
-        a=v;
-        if (a>b) {
-          store_hash(myb,opb,ind,lmove);
-          return b;
-        }
-      }
-    }
-    else {
-      fprintf(stderr,"Caramba!!!!\n");
-      exit(-1);
-    }
-  }
+  int sq;
   while (es) {
-    int sq = __builtin_ffsl(es)-1;
+    if (nsq>=0) {
+      sq=nsq;
+      nsq=-1;
+    }
+    else
+      sq = __builtin_ffsl(es)-1;
     FLIP(es,sq);
     uint64_t nmyb=myb,nopb=opb;
-    if ((sq!=nsq)&&(play2(sq,&nmyb,&nopb))) {
+    if (play8(sq,&nmyb,&nopb)) {
       lpass=false;
       int v = -ab(nopb,nmyb,-b,-a,depth+1,mindepth,maxdepth,false);
       if (v>a) {
@@ -646,6 +634,56 @@ int ab(uint64_t myb,uint64_t opb,
   }
   else {
     store_hash(myb,opb,ind,lmove);
+    return a;
+  }
+}
+int ab_fast(uint64_t myb,uint64_t opb,
+            int alpha,int beta,
+            int depth,int mindepth,
+            bool pass) {
+  int a = alpha, b = beta;
+  bool lpass=true;
+  uint64_t es = ~(myb|opb);
+  if (es==0) {
+    int v = NB_DISCS(myb)-NB_DISCS(opb);
+    if (v>0) return WIN+v;
+    else if (v<0) return -WIN+v;
+    else return 0;
+  }
+  int sq;
+  while (es) {
+    sq = __builtin_ffsl(es)-1;
+    FLIP(es,sq);
+    uint64_t nmyb=myb,nopb=opb;
+    if (play8(sq,&nmyb,&nopb)) {
+      lpass=false;
+      int v = -ab_fast(nopb,nmyb,-b,-a,depth+1,mindepth,false);
+      if (v>a) {
+        if (depth==mindepth) best_move=sq;
+        a=v;
+        if (a>b) {
+          return b;
+        }
+      }
+    }
+  }
+  if (lpass) {
+    if (pass) {
+      int v = NB_DISCS(myb)-NB_DISCS(opb);
+      if (v>0) return WIN+v;
+      else if (v<0) return -WIN+v;
+      else return 0;
+    }
+    else {
+      int v = -ab_fast(opb,myb,-b,-a,depth+1,mindepth,true);
+      if (v>a) {
+        a=v;
+        if (a>b) return b;
+      }
+      return a;
+    }
+  }
+  else {
     return a;
   }
 }
@@ -683,10 +721,6 @@ int main(int argc, char **argv) {
   if (argc==2) {
     set_pos(argv[1],&wb,&bb);
     /*
-    play5(40,&wb,&bb);
-    display(wb,bb);
-    exit(-1);
-    */
     uint64_t n;
     n=0;
     clock_t t1;
@@ -729,50 +763,48 @@ int main(int argc, char **argv) {
              n,f1,f2,f3,f4,f5,f6,f7,f8);
     }
     exit(-1);
+    */
   }
   else {
-    SET_XY(wb,3,4);
-    SET_XY(wb,4,3);
-    SET_XY(bb,3,3);
-    SET_XY(bb,4,4);
+    SET_XY(bb,3,4);
+    SET_XY(bb,4,3);
+    SET_XY(wb,3,3);
+    SET_XY(wb,4,4);
   }
   display(wb,bb);
-  /*
-  uint64_t nwb=wb,nbb=bb;
-  printf("coucou\n");
-  play3(4+8*6,&nwb,&nbb);
-  play(4,6,&wb,&bb);
-  display(wb,bb);
-  fflush(stdout);
-  if ((nwb!=wb)||(nbb!=bb)) {
-    printf("zorglab\n");
-    display(nwb,nbb);
-    exit(-1);
-  }
-  exit(-1);
-  */
   int x,y;
   int depth=0;
   while (playable(wb,bb)||playable(bb,wb)) {
       if (playable(wb,bb)) {
         int alpha=-32767,beta=32767,res;
         clock_t time=clock();
-        for (int maxdepth=depth+2;;maxdepth++) {
-        back:
-          res = ab(wb,bb,alpha,beta,depth,depth,maxdepth,false);
+        int nb_free=NB_DISCS(~(wb|bb));
+        printf("nb_free=%d\n",nb_free);
+        if (nb_free<=14) {
+          res = ab_fast(wb,bb,-2,2,depth,depth,false);
+//          res = ab(wb,bb,-2,2,depth,depth,10000,false);
           x = best_move%8;y = best_move/8;
           double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
-          printf("alpha=%6d beta=%6d maxdepth=%3d move=%d res=%6d time=%f\n",
-                 alpha,beta,maxdepth,x+y*10,res,ftime);
-          if (ftime>1.0) break;
-          if (res<=alpha) {alpha=-32767;beta=res+1;goto back;}
-          if (res>=beta) {alpha=res-1;beta=32767;goto back;}
-          if (abs(res)>WIN) break;
-          if ((maxdepth-depth)%2==0) {alpha=res-15;beta=res+1;}
-          else {alpha=res-1;beta=res+15;}
+          printf("move=%3d res=%6d time=%f\n",x+y*10,res,ftime);
+        }
+        else {
+          for (int maxdepth=depth+2;;maxdepth++) {
+          back:
+            res = ab(wb,bb,alpha,beta,depth,depth,maxdepth,false);
+            x = best_move%8;y = best_move/8;
+            double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
+            printf("alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
+                   alpha,beta,depth,maxdepth,x+y*10,res,ftime);
+            if (ftime>1.0) break;
+            if (res<=alpha) {alpha=-32767;beta=res+1;goto back;}
+            if (res>=beta) {alpha=res-1;beta=32767;goto back;}
+            if (abs(res)>WIN) break;
+            if ((maxdepth-depth)%2==0) {alpha=res-15;beta=res+1;}
+            else {alpha=res-1;beta=res+15;}
+          }
         }
         uint64_t nwb=wb,nbb=bb;
-        printf("coucou\n");
+        printf("coucou=%d\n",x+10*y);
         play8(x+8*y,&nwb,&nbb);
         play(x,y,&wb,&bb);
         display(wb,bb);
