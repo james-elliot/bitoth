@@ -5,7 +5,9 @@
 #include <time.h>
 #include <string.h>
 
+#define MAXV 32767
 #define WIN 32700
+
 #define MAX(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
@@ -36,7 +38,6 @@
 #define IND_BIT(b)   ((int8_t)(__builtin_ffsl((int64_t)b)))
 
 uint64_t masks[64];
-
 void init_masks() {
   for (int x=0;x<8;x++) {
     for (int y=0;y<8;y++) {
@@ -112,6 +113,7 @@ void init_dep3() {
     }
   }
 }
+
 bool play3(int x,uint64_t *myb,uint64_t *opb) {
   bool valid=false;
   for (int i=0;i<deps3[x].nb;i++) {
@@ -210,6 +212,7 @@ void init_deps7() {
     deps7[i][n].t[0]=-1;
   }
 }
+
 bool play7(int x,uint64_t *myb,uint64_t *opb) {
   bool valid=false;
   dep7 *d=deps7[x];
@@ -263,6 +266,7 @@ bool play4(int x,uint64_t *myb,uint64_t *opb) {
   if (valid) SET(*myb,x);
   return valid;
 }
+
 bool play5(int x,uint64_t *myb,uint64_t *opb) {
   bool valid=false;
   int8_t** curi;
@@ -508,25 +512,11 @@ _hash_t {
 typedef struct _hash_t hash_t;
 hash_t *hashv;
 
-#define NO_EVAL 32767
 #define PASS (-2)
-/*
-int8_t find_hash(uint64_t myb,uint64_t opb,uint32_t ind,int16_t *v_inf,
-              int16_t *v_sup,int delta_depth) {
-  if ((hashv[ind].myb==myb)&&(hashv[ind].opb==opb)) {
-    if ((delta_depth==hashv[ind].delta_d) ||
-        ((hashv[ind].v_inf==hashv[ind].v_sup)&&(ABS(hashv[ind].v_sup)>WIN))) {
-      *v_inf=hashv[ind].v_inf;
-      *v_sup=hashv[ind].v_sup;
-      }
-    return hashv[ind].move;
-  }
-  return -1;
-}
-*/
+#define INVALID_MOVE (-1)
+
 bool retrieve_v_hash(uint64_t myb,uint64_t opb,uint32_t ind,
-                    int16_t *v_inf,int16_t *v_sup,int8_t *bmove,uint8_t dist)
-{
+                    int16_t *v_inf,int16_t *v_sup,int8_t *bmove,uint8_t dist) {
   if ((hashv[ind].opb==opb)&&(hashv[ind].myb==myb)) {
     if ((hashv[ind].dist==dist)
         ||
@@ -542,22 +532,7 @@ bool retrieve_v_hash(uint64_t myb,uint64_t opb,uint32_t ind,
   }
   return false;
 }
-/*
-void store_hash(uint64_t myb,uint64_t opb,uint32_t ind,int8_t move,
-                int16_t v_inf,int16_t v_sup,int basedepth,int depth,
-                int delta_depth) {
-  if ((hashv[ind].base_d<basedepth)||(hashv[ind].d>=depth)) {
-    if ((v_inf!=-NO_EVAL)||(hashv[ind].delta_d!=delta_depth)) hashv[ind].v_inf=v_inf;
-    if ((v_sup!= NO_EVAL)||(hashv[ind].delta_d!=delta_depth)) hashv[ind].v_sup=v_sup;
-    hashv[ind].myb=myb;
-    hashv[ind].opb=opb;
-    hashv[ind].move=move;
-    hashv[ind].d=depth;
-    hashv[ind].base_d=basedepth;
-    hashv[ind].delta_d=delta_depth;
-  }
-}
-*/
+
 void store_v_hash_both(uint64_t myb,uint64_t opb,uint32_t ind,int16_t v,
                        uint8_t dist,uint8_t base,int8_t move) {
   if ((hashv[ind].base!=base)||(hashv[ind].dist<=dist)) {
@@ -570,14 +545,15 @@ void store_v_hash_both(uint64_t myb,uint64_t opb,uint32_t ind,int16_t v,
     hashv[ind].dist=dist;
     };
 }
+
 void store_v_hash(uint64_t myb,uint64_t opb,uint32_t ind,
                   int16_t alpha,int16_t beta,int16_t g,
                   uint8_t dist,uint8_t base,int8_t move) {
   if ((hashv[ind].base!=base)||(hashv[ind].dist<=dist)) {
     if ((hashv[ind].myb!=myb) ||(hashv[ind].opb!=opb) || (hashv[ind].dist!=dist)) {
       /* Not an update. Have to initialize/reset everything */
-      hashv[ind].v_inf=-NO_EVAL;
-      hashv[ind].v_sup=NO_EVAL;
+      hashv[ind].v_inf=-MAXV;
+      hashv[ind].v_sup=MAXV;
       hashv[ind].dist=dist;
       hashv[ind].myb=myb;
       hashv[ind].opb=opb;
@@ -629,7 +605,7 @@ uint32_t compute_ind(uint64_t myb,uint64_t opb) {
   return ind;
 }
 
-int best_move=PASS;
+int best_move;
 
 int16_t ab(uint64_t myb,uint64_t opb,
        int16_t alpha,int16_t beta,
@@ -658,7 +634,7 @@ int16_t ab(uint64_t myb,uint64_t opb,
   if (depth>=maxdepth) return eval(myb,opb);
   int8_t sq;
   int16_t a=alpha;
-  int16_t v=-NO_EVAL;
+  int16_t v=-MAXV;
   if (nsq==PASS) goto pass;
   while (es) {
     if (nsq>=0) {
@@ -794,26 +770,31 @@ int main(int argc, char **argv) {
   bool opp_pass=false;
   while (playable(wb,bb)||playable(bb,wb)) {
       if (playable(wb,bb)) {
-        int16_t alpha=-NO_EVAL,beta=NO_EVAL,res;
+        int16_t alpha=-MAXV,beta=MAXV,res;
         clock_t time=clock();
         int nb_free=NB_BITS(~(wb|bb));
         printf("nb_free=%d\n",nb_free);
         for (uint8_t maxdepth=depth+2;;maxdepth++) {
         back:
+          best_move=INVALID_MOVE;
           res = ab(wb,bb,alpha,beta,depth,depth,maxdepth,opp_pass);
+          if (best_move<0){
+            fprintf(stderr,"Invalid move=%d\n",best_move);
+            exit(-1);
+          }
           x = best_move%8;y = best_move/8;
           double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
           printf("alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
                  alpha,beta,depth,maxdepth,x+y*10,res,ftime);
           if (ftime>1.0) break;
-          if (res<=alpha) {alpha=-NO_EVAL;beta=res+1;goto back;}
-          if (res>=beta) {alpha=res-1;beta=NO_EVAL;goto back;}
+          if (res<=alpha) {alpha=-MAXV;beta=res+1;goto back;}
+          if (res>=beta) {alpha=res-1;beta=MAXV;goto back;}
           if (abs(res)>WIN) break;
           if ((maxdepth-depth)%2==0) {alpha=res-10;beta=res+1;}
           else {alpha=res-1;beta=res+10;}
         }
         uint64_t nwb=wb,nbb=bb;
-        printf("coucou=%d\n",x+10*y);
+        printf("my_move=%d\n",x+10*y);
         play8(x+8*y,&nwb,&nbb);
         play(x,y,&wb,&bb);
         display(wb,bb);
@@ -826,17 +807,16 @@ int main(int argc, char **argv) {
       }
       depth++;
       if (playable(bb,wb)) {
+        opp_pass=false;
         char *s=NULL;
         long unsigned int n=0;
-        opp_pass=false;
         do {
-          int move;
           long int ret=getline(&s,&n,stdin);
           if (ret==-1) {
             fprintf(stderr,"getline failed\n");
             exit(-1);
           }
-          move=atoi(s);
+          int move=atoi(s);
           x = move%10;y=move/10;
           printf("x=%d y=%d\n",x,y);
         } while ((!CHECK(x,y))||(IS_SET_XY(wb|bb,x,y))||(!play(x,y,&bb,&wb)));
@@ -849,7 +829,3 @@ int main(int argc, char **argv) {
   printf("res=%d\n",NB_BITS(wb)-NB_BITS(bb));
   return 0;
 }
-/*
-x=4,y=6
-p=52
-*/
