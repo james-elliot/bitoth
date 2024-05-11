@@ -495,7 +495,7 @@ void display(uint64_t wb,uint64_t bb) {
   printf("eval_pos=%d\n",eval_pos(wb,bb));
 }
 
-#define NB_BITS_H 25
+#define NB_BITS_H 27
 #define SIZE_H ((uint64_t)1<<NB_BITS_H)
 #define MASK_H (SIZE_H-1)
 
@@ -768,16 +768,18 @@ int main(int argc, char **argv) {
   int x,y;
   uint8_t depth=0;
   bool opp_pass=false;
+  int16_t evals[128];
   while (playable(wb,bb)||playable(bb,wb)) {
       if (playable(wb,bb)) {
-        int16_t alpha=-MAXV,beta=MAXV,res;
         clock_t time=clock();
         int nb_free=NB_BITS(~(wb|bb));
         printf("nb_free=%d\n",nb_free);
+        int16_t alpha=-MAXV,beta=MAXV,res;
         for (uint8_t maxdepth=depth+2;;maxdepth++) {
         back:
           best_move=INVALID_MOVE;
           res = ab(wb,bb,alpha,beta,depth,depth,maxdepth,opp_pass);
+          evals[maxdepth]=res;
           if (best_move<0){
             fprintf(stderr,"Invalid move=%d\n",best_move);
             exit(-1);
@@ -787,11 +789,18 @@ int main(int argc, char **argv) {
           printf("alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
                  alpha,beta,depth,maxdepth,x+y*10,res,ftime);
           if (ftime>1.0) break;
+          /*
           if (res<=alpha) {alpha=-MAXV;beta=res+1;goto back;}
           if (res>=beta) {alpha=res-1;beta=MAXV;goto back;}
+          */
+          if (res<=alpha) {alpha=res-1;beta=res+1;goto back;}
+          if (res>=beta) {alpha=res-1;beta=res+1;goto back;}
           if (abs(res)>WIN) break;
+          /*
           if ((maxdepth-depth)%2==0) {alpha=res-10;beta=res+1;}
           else {alpha=res-1;beta=res+10;}
+          */
+          alpha=evals[maxdepth-1]-3;beta=evals[maxdepth-1]+3;
         }
         uint64_t nwb=wb,nbb=bb;
         printf("my_move=%d\n",x+10*y);
