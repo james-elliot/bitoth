@@ -6,6 +6,17 @@
 #include <string.h>
 
 #define WIN 32700
+#define MAX(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+#define MIN(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+       __typeof__ (b) _b = (b); \
+     _a > _b ? _a : _b; })
+#define ABS(a) \
+   ({ __typeof__ (a) _a = (a); \
+     _a > 0 ? _a : -_a; })
 
 #define CHECK(x,y) (((x)>=0)&&((x)<8)&&((y)>=0)&&((y)<8))
 
@@ -19,7 +30,9 @@
 #define CLEAR(a,x) ((a)&= ~((uint64_t)1<<((x))))
 #define FLIP(a,x) ((a)^=((uint64_t)1<<((x))))
 
-#define NB_DISCS(b) (__builtin_popcountl(b))
+#define NB_BITS(b)   (__builtin_popcountl(b))
+#define TRAIL_BIT(b) (__builtin_ctzl(b))
+#define LEAD_BIT(b)  (__builtin_clzl(b))
 
 uint64_t masks[64];
 
@@ -282,11 +295,11 @@ bool play8(int x,uint64_t *myb,uint64_t *opb) {
       if (m>0) {
         int n;
         if (j>x) {
-          n=__builtin_ctzl(m);
+          n=TRAIL_BIT(m);
           m=(((uint64_t)1<<n)-1);
         }
         else {
-          n=64-__builtin_clzl(m);
+          n=64-LEAD_BIT(m);
           m=~(((uint64_t)1<<n)-1);
         }
         m&=masks45[x][i];
@@ -417,7 +430,7 @@ int eval_lib(uint64_t b,uint64_t es) {
   while(b) {
     int sq = __builtin_ffsl(b)-1;
     b^=(uint64_t)1<<sq;
-    libs+=NB_DISCS(es&masks[sq]);
+    libs+=NB_BITS(es&masks[sq]);
   }
   return libs;
 }
@@ -452,8 +465,8 @@ int eval_pos(uint64_t myb,uint64_t opb) {
 
 int eval(uint64_t myb,uint64_t opb) {
   uint64_t es = ~(myb|opb);
-//  int nb = NB_DISCS(es);
-//  int vdisc = (NB_DISCS(myb)-NB_DISCS(opb));
+//  int nb = NB_BITS(es);
+//  int vdisc = (NB_BITS(myb)-NB_BITS(opb));
 //  if (nb<=12) return vdisc;
   int vpos = eval_pos(myb,opb);
   int vlib = -(eval_lib(myb,es)-eval_lib(opb,es));
@@ -482,23 +495,45 @@ void display(uint64_t wb,uint64_t bb) {
 struct
 __attribute__((packed))
 _hash_t {
-  uint8_t move;
+  int8_t move;
   uint64_t myb;
   uint64_t opb;
+  int16_t v_sup;
+  int16_t v_inf;
+  uint8_t d;
+  uint8_t base_d;
+  uint8_t delta_d;
 };
 typedef struct _hash_t hash_t;
 hash_t *hashv;
 
-int find_hash(uint64_t myb,uint64_t opb,uint32_t ind) {
-  if ((hashv[ind].myb==myb)&&(hashv[ind].opb==opb)) return hashv[ind].move;
+#define NO_EVAL 32767
+#define PASS (-2)
+int8_t find_hash(uint64_t myb,uint64_t opb,uint32_t ind,int16_t *v_inf,
+              int16_t *v_sup,int delta_depth) {
+  if ((hashv[ind].myb==myb)&&(hashv[ind].opb==opb)) {
+    if ((delta_depth==hashv[ind].delta_d) ||
+        ((hashv[ind].v_inf==hashv[ind].v_sup)&&(ABS(hashv[ind].v_sup)>WIN))) {
+      *v_inf=hashv[ind].v_inf;
+      *v_sup=hashv[ind].v_sup;
+      }
+    return hashv[ind].move;
+  }
   return -1;
 }
 
-void store_hash(uint64_t myb,uint64_t opb,uint32_t ind,int move) {
-  if (move>=0) {
+void store_hash(uint64_t myb,uint64_t opb,uint32_t ind,int8_t move,
+                int16_t v_inf,int16_t v_sup,int basedepth,int depth,
+                int delta_depth) {
+  if ((hashv[ind].base_d<basedepth)||(hashv[ind].d>=depth)) {
+    if ((v_inf!=-NO_EVAL)||(hashv[ind].delta_d!=delta_depth)) hashv[ind].v_inf=v_inf;
+    if ((v_sup!= NO_EVAL)||(hashv[ind].delta_d!=delta_depth)) hashv[ind].v_sup=v_sup;
     hashv[ind].myb=myb;
     hashv[ind].opb=opb;
-    hashv[ind].move=(uint8_t)move;
+    hashv[ind].move=move;
+    hashv[ind].d=depth;
+    hashv[ind].base_d=basedepth;
+    hashv[ind].delta_d=delta_depth;
   }
 }
 
@@ -521,42 +556,9 @@ void init_hash() {
 
 void init_all() {
   init_dep2();
-/*
-  for (int i=0;i<64;i++) {
-    for (int j=0;j<8;j++) {
-      printf("%d %d:",i,j);
-      for (int k=0;k<8;k++) {
-        if (dep[i][j][k]<0) break;
-        printf("%d ",dep[i][j][k]);
-        }
-      printf("\n");
-    }
-  }
-  exit(-1);
-*/
   init_dep3();
   init_deps4();
   init_deps7();
-  /*
-  for (int i=0;i<64;i++) {
-    int8_t **curi=deps4[i];
-    for (int j=0;j<deps3[i].nb;j++) {
-      printf("(%d,%d):",i,j);
-      for (int k=0;k<deps3[i].tab[j].nb;k++)
-        printf("%d ",deps3[i].tab[j].t[k]);
-      printf("\n");
-      printf("(%d,%d\n%064lb\n%064lb):",i,j,masks44[i][j],masks45[i][j]);
-      int8_t *curj=*curi;
-      while (*curj>=0) {printf("%d ",*curj);curj++;}
-      printf("\n");
-      curi++;
-    }
-    if (*curi!=NULL) {
-      printf("Ghdr\n");
-      exit(-1);
-    }
-  }
-  */
   init_idx();
   init_hash();
   init_masks();
@@ -576,116 +578,85 @@ uint32_t compute_ind(uint64_t myb,uint64_t opb) {
 int best_move=-1;
 
 int ab(uint64_t myb,uint64_t opb,
-       int alpha,int beta,
-       int depth,int mindepth,int maxdepth,
+       int16_t alpha,int16_t beta,
+       int depth,int basedepth,int maxdepth,
        bool pass) {
-  int a = alpha, b = beta;
+  int16_t v=-NO_EVAL,v_inf=-NO_EVAL,v_sup=NO_EVAL;
   bool lpass=true;
-  int lmove=-1;
+  int8_t lmove=-1;
+  uint32_t ind = compute_ind(myb,opb);
+  int8_t nsq=find_hash(myb,opb,ind,&v_inf,&v_sup,maxdepth-depth);
+  if (v_inf==v_sup) {
+    if (depth==basedepth) best_move=nsq;
+    return v_inf;
+  }
+  if (v_inf>=beta) {
+    if (depth==basedepth) best_move=nsq;
+    return v_inf;
+  }
+  if (v_sup<=alpha) {
+    if (depth==basedepth) best_move=nsq;
+    return v_sup;
+  }
+  if (nsq==PASS) goto pass;
   uint64_t es = ~(myb|opb);
   if (es==0) {
-    int v = NB_DISCS(myb)-NB_DISCS(opb);
-    if (v>0) return WIN+v;
-    else if (v<0) return -WIN+v;
-    else return 0;
+    v = NB_BITS(myb)-NB_BITS(opb);
+    if (v>0) v=WIN+v;
+    else if (v<0) v=-WIN+v;
+    store_hash(myb,opb,ind,PASS,v,v,basedepth,depth,maxdepth-depth);
+    return v;
   }
   if (depth>=maxdepth) return eval(myb,opb);
-  uint32_t ind = compute_ind(myb,opb);
-  int nsq=find_hash(myb,opb,ind);
-  int sq;
+  int8_t sq;
+  int16_t a=MAX(v_inf,alpha);
   while (es) {
     if (nsq>=0) {
       sq=nsq;
       nsq=-1;
     }
     else
-      sq = __builtin_ffsl(es)-1;
+      sq=__builtin_ffsl(es)-1;
     FLIP(es,sq);
     uint64_t nmyb=myb,nopb=opb;
     if (play8(sq,&nmyb,&nopb)) {
       lpass=false;
-      int v = -ab(nopb,nmyb,-b,-a,depth+1,mindepth,maxdepth,false);
-      if (v>a) {
-        if (depth==mindepth) best_move=sq;
+      if (lmove==-1) lmove=sq;
+      int16_t nv = -ab(nopb,nmyb,-beta,-a,depth+1,basedepth,maxdepth,false);
+      if (nv>v) {
+        v=nv;
         lmove=sq;
-        a=v;
-        if (a>b) {
-          store_hash(myb,opb,ind,lmove);
-          return b;
-        }
+        if (depth==basedepth) best_move=sq;
+        a=MAX(a,v);
+        if (a>=beta) goto fin;
       }
     }
   }
+pass:
   if (lpass) {
+    lmove=PASS;
     if (pass) {
-      int v = NB_DISCS(myb)-NB_DISCS(opb);
-      if (v>0) return WIN+v;
-      else if (v<0) return -WIN+v;
-      else return 0;
+      v = NB_BITS(myb)-NB_BITS(opb);
+      if (v>0) v=WIN+v;
+      else if (v<0) v=-WIN+v;
+      store_hash(myb,opb,ind,PASS,v,v,basedepth,depth,maxdepth-depth);
+      return v;
     }
     else {
-      int v = -ab(opb,myb,-b,-a,depth+1,mindepth,maxdepth,true);
-      if (v>a) {
-        a=v;
-        if (a>b) return b;
-      }
-      return a;
+      v = -ab(opb,myb,-beta,-a,depth+1,basedepth,maxdepth,true);
     }
+  }
+fin:
+  if (v>=beta) {
+    store_hash(myb,opb,ind,lmove,-NO_EVAL,v,basedepth,depth,maxdepth-depth);
+  }
+  else if (v<=alpha) {
+    store_hash(myb,opb,ind,lmove,v,NO_EVAL,basedepth,depth,maxdepth-depth);
   }
   else {
-    store_hash(myb,opb,ind,lmove);
-    return a;
+    store_hash(myb,opb,ind,lmove,v,v,basedepth,depth,maxdepth-depth);
   }
-}
-int ab_fast(uint64_t myb,uint64_t opb,
-            int alpha,int beta,
-            int depth,int mindepth,
-            bool pass) {
-  int a = alpha, b = beta;
-  bool lpass=true;
-  uint64_t es = ~(myb|opb);
-  if (es==0) {
-    int v = NB_DISCS(myb)-NB_DISCS(opb);
-    if (v>0) return WIN+v;
-    else if (v<0) return -WIN+v;
-    else return 0;
-  }
-  int sq;
-  while (es) {
-    sq = __builtin_ffsl(es)-1;
-    FLIP(es,sq);
-    uint64_t nmyb=myb,nopb=opb;
-    if (play8(sq,&nmyb,&nopb)) {
-      lpass=false;
-      int v = -ab_fast(nopb,nmyb,-b,-a,depth+1,mindepth,false);
-      if (v>a) {
-        if (depth==mindepth) best_move=sq;
-        a=v;
-        if (a>b) {
-          return b;
-        }
-      }
-    }
-  }
-  if (lpass) {
-    if (pass) {
-      int v = NB_DISCS(myb)-NB_DISCS(opb);
-      if (v>0) return WIN+v;
-      else if (v<0) return -WIN+v;
-      else return 0;
-    }
-    else {
-      int v = -ab_fast(opb,myb,-b,-a,depth+1,mindepth,true);
-      if (v>a) {
-        a=v;
-        if (a>b) return b;
-      }
-      return a;
-    }
-  }
-  else {
-    return a;
-  }
+  return v;
 }
 
 void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
@@ -776,11 +747,11 @@ int main(int argc, char **argv) {
   int depth=0;
   while (playable(wb,bb)||playable(bb,wb)) {
       if (playable(wb,bb)) {
-        int alpha=-32767,beta=32767,res;
+        int alpha=-32766,beta=32766,res;
         clock_t time=clock();
-        int nb_free=NB_DISCS(~(wb|bb));
+        int nb_free=NB_BITS(~(wb|bb));
         printf("nb_free=%d\n",nb_free);
-        if (nb_free<=14) {
+        if (nb_free<=-1) {
           res = ab_fast(wb,bb,-2,2,depth,depth,false);
 //          res = ab(wb,bb,-2,2,depth,depth,10000,false);
           x = best_move%8;y = best_move/8;
@@ -796,11 +767,11 @@ int main(int argc, char **argv) {
             printf("alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
                    alpha,beta,depth,maxdepth,x+y*10,res,ftime);
             if (ftime>1.0) break;
-            if (res<=alpha) {alpha=-32767;beta=res+1;goto back;}
-            if (res>=beta) {alpha=res-1;beta=32767;goto back;}
+            if (res<=alpha) {alpha=-32766;beta=res+1;goto back;}
+            if (res>=beta) {alpha=res-1;beta=32766;goto back;}
             if (abs(res)>WIN) break;
-            if ((maxdepth-depth)%2==0) {alpha=res-15;beta=res+1;}
-            else {alpha=res-1;beta=res+15;}
+            if ((maxdepth-depth)%2==0) {alpha=res-10;beta=res+1;}
+            else {alpha=res-1;beta=res+10;}
           }
         }
         uint64_t nwb=wb,nbb=bb;
@@ -830,7 +801,7 @@ int main(int argc, char **argv) {
       }
       depth++;
     }
-  printf("res=%d\n",NB_DISCS(wb)-NB_DISCS(bb));
+  printf("res=%d\n",NB_BITS(wb)-NB_BITS(bb));
   return 0;
 }
 /*
