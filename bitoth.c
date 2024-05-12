@@ -4,9 +4,8 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
-
-#define MAXV 32767
-#define WIN 32700
+#include <sys/time.h>
+#include <signal.h>
 
 #define MAX(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -36,6 +35,14 @@
 #define TRAIL_BIT(b) (__builtin_ctzl(b))
 #define LEAD_BIT(b)  (__builtin_clzl(b))
 #define IND_BIT(b)   ((int8_t)(__builtin_ffsl((int64_t)b)))
+
+bool get_out = false;
+void handler(__attribute__((unused))int signum) {get_out=true;};
+
+#define GET_OUT (-32767)
+#define MAXV 32766
+#define WIN 32700
+
 
 uint64_t masks[64];
 void init_masks() {
@@ -482,17 +489,17 @@ int16_t eval(uint64_t myb,uint64_t opb) {
 
 
 void display(uint64_t wb,uint64_t bb) {
-  for (int j=7;j>=0;j--) {
-    printf("%2d ",10*j);
+  for (int j=0;j<=7;j++) {
+    fprintf(stderr,"%2d ",8*j);
     for (int i=0;i<8;i++) {
-      if IS_SET_XY(wb,i,j) printf(" X ");
-      else if IS_SET_XY(bb,i,j) printf(" O ");
-      else printf(" . ");
+      if IS_SET_XY(wb,i,j) fprintf(stderr," X ");
+      else if IS_SET_XY(bb,i,j) fprintf(stderr," O ");
+      else fprintf(stderr," . ");
     }
-    printf("\n");
+    fprintf(stderr,"\n");
   }
-  printf("    0  1  2  3  4  5  6  7\n");
-  printf("eval_pos=%d\n",eval_pos(wb,bb));
+  fprintf(stderr,"    0  1  2  3  4  5  6  7\n");
+  fprintf(stderr,"eval_pos=%d\n",eval_pos(wb,bb));
 }
 
 #define NB_BITS_H 27
@@ -611,10 +618,21 @@ int16_t ab(uint64_t myb,uint64_t opb,
        int16_t alpha,int16_t beta,
        uint8_t depth,uint8_t base,uint8_t maxdepth,
        bool pass) {
-  int16_t v_inf,v_sup;
+  uint64_t es = ~(myb|opb);
+  if (es==0) {
+    int16_t v = NB_BITS(myb)-NB_BITS(opb);
+    if (v>0) v=WIN+v;
+    else if (v<0) v=-WIN+v;
+    return v;
+  }
+  if (depth==maxdepth) {
+    return eval(myb,opb);
+  }
+  int16_t v=-MAXV;
   bool lpass=true;
-  int8_t lmove=-1,nsq=-1;
+  int8_t lmove=INVALID_MOVE,nsq=INVALID_MOVE;
   uint32_t ind = compute_ind(myb,opb);
+  int16_t v_inf,v_sup;
   if (retrieve_v_hash(myb,opb,ind,&v_inf,&v_sup,&nsq,maxdepth-depth)) {
     if (depth==base) {best_move=nsq;}
     if (v_inf==v_sup) return v_inf; /* Exact evaluation */
@@ -623,23 +641,13 @@ int16_t ab(uint64_t myb,uint64_t opb,
     alpha=MAX(alpha,v_inf);
     beta=MIN(beta,v_sup);
   }
-  uint64_t es = ~(myb|opb);
-  if (es==0) {
-    int16_t v = NB_BITS(myb)-NB_BITS(opb);
-    if (v>0) v=WIN+v;
-    else if (v<0) v=-WIN+v;
-    store_v_hash_both(myb,opb,ind,v,maxdepth-depth,base,PASS);
-    return v;
-  }
-  if (depth>=maxdepth) return eval(myb,opb);
   int8_t sq;
   int16_t a=alpha;
-  int16_t v=-MAXV;
   if (nsq==PASS) goto pass;
   while (es) {
     if (nsq>=0) {
       sq=nsq;
-      nsq=-1;
+      nsq=INVALID_MOVE;
     }
     else
       sq=IND_BIT(es)-1;
@@ -648,6 +656,7 @@ int16_t ab(uint64_t myb,uint64_t opb,
     if (play8(sq,&nmyb,&nopb)) {
       lpass=false;
       int16_t nv = -ab(nopb,nmyb,-beta,-a,depth+1,base,maxdepth,false);
+      if (get_out) return GET_OUT;
       if (nv>v) {
         v=nv;
         lmove=sq;
@@ -669,6 +678,7 @@ pass:
     }
     else {
       v = -ab(opb,myb,-beta,-a,depth+1,base,maxdepth,true);
+      if (get_out) return GET_OUT;
     }
   }
 fin:
@@ -686,7 +696,7 @@ void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
       fprintf(stderr,"getline failed\n");
       exit(-1);
     }
-    printf("%s",s);
+    fprintf(stderr,"%s",s);
     for (int i=0;i<=7;i++) {
       switch (s[4+3*i]) {
       case 'X' :
@@ -698,21 +708,40 @@ void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
       case '.' :
         break;
       default:
-        printf("Zorglub!!!!\n");
+        fprintf(stderr,"Zorglub!!!!\n");
         exit(-1);
         }
     }
   }
   fclose(fp);
-  printf("End read\n");
+  fprintf(stderr,"End read\n");
   free(s);
 }
 
 int main(int argc, char **argv) {
-  uint64_t wb=0,bb=0;
+  struct itimerval timer={{0,0},{0,0}};
+  uint64_t myb=0,opb=0;
   init_all();
-  if (argc==2) {
-    set_pos(argv[1],&wb,&bb);
+  if ((argc<3)||(argc>4)) {
+    fprintf(stderr,"Bad number of arguments\n");
+    exit(-1);
+  }
+  
+  int player=atoi(argv[1]);
+  if ((player!=1)&&(player!=2)) {
+    fprintf(stderr,"Bad player argument\n");
+    exit(-1);
+  }
+
+  int time_play=atoi(argv[2]);
+  if ((time_play<=0)||(time_play>=120)) {
+    fprintf(stderr,"Bad time argument\n");
+    exit(-1);
+  }
+
+  
+  if (argc==4) {
+    set_pos(argv[3],&myb,&opb);
     /*
     uint64_t n;
     n=0;
@@ -721,120 +750,127 @@ int main(int argc, char **argv) {
     int nb=10000000;
     for (uint64_t j=0;j<10;j++) {
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,playb);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,playb);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f1+=f;
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play2);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play2);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f2+=f;
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play3);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play3);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f3+=f;
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play4);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play4);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f4+=f;
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play5);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play5);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f5+=f;
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play6);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play6);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f6+=f;
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play7);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play7);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f7+=f;
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,wb,bb,play8);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play8);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f8+=f;
-      printf("%15ld f1=%6.2f f2=%6.2f f3=%6.2f f4=%6.2f f5=%6.2f f6=%6.2f f7=%6.2f f8=%6.2f\n",
+      fprintf(stderr,"%15ld f1=%6.2f f2=%6.2f f3=%6.2f f4=%6.2f f5=%6.2f f6=%6.2f f7=%6.2f f8=%6.2f\n",
              n,f1,f2,f3,f4,f5,f6,f7,f8);
     }
     exit(-1);
     */
   }
   else {
-    SET_XY(bb,3,4);
-    SET_XY(bb,4,3);
-    SET_XY(wb,3,3);
-    SET_XY(wb,4,4);
+    if (player==1) {
+      SET_XY(opb,3,4);
+      SET_XY(opb,4,3);
+      SET_XY(myb,3,3);
+      SET_XY(myb,4,4);
+    }
+    else {
+      SET_XY(myb,3,4);
+      SET_XY(myb,4,3);
+      SET_XY(opb,3,3);
+      SET_XY(opb,4,4);
+    }
   }
-  display(wb,bb);
-  int x,y;
+  display(myb,opb);
   uint8_t depth=0;
   bool opp_pass=false;
   int16_t evals[128];
-  while (playable(wb,bb)||playable(bb,wb)) {
-      if (playable(wb,bb)) {
-        clock_t time=clock();
-        int nb_free=NB_BITS(~(wb|bb));
-        printf("nb_free=%d\n",nb_free);
-        int16_t alpha=-MAXV,beta=MAXV,res;
-        for (uint8_t maxdepth=depth+2;;maxdepth++) {
-        back:
-          best_move=INVALID_MOVE;
-          res = ab(wb,bb,alpha,beta,depth,depth,maxdepth,opp_pass);
-          evals[maxdepth]=res;
-          if (best_move<0){
-            fprintf(stderr,"Invalid move=%d\n",best_move);
-            exit(-1);
-          }
-          x = best_move%8;y = best_move/8;
-          double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
-          printf("alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
-                 alpha,beta,depth,maxdepth,x+y*10,res,ftime);
-          if (ftime>1.0) break;
-          /*
-          if (res<=alpha) {alpha=-MAXV;beta=res+1;goto back;}
-          if (res>=beta) {alpha=res-1;beta=MAXV;goto back;}
-          */
-          if (res<=alpha) {alpha=res-1;beta=res+1;goto back;}
-          if (res>=beta) {alpha=res-1;beta=res+1;goto back;}
-          if (abs(res)>WIN) break;
-          /*
-          if ((maxdepth-depth)%2==0) {alpha=res-10;beta=res+1;}
-          else {alpha=res-1;beta=res+10;}
-          */
-          alpha=evals[maxdepth-1]-3;beta=evals[maxdepth-1]+3;
-        }
-        uint64_t nwb=wb,nbb=bb;
-        printf("my_move=%d\n",x+10*y);
-        play8(x+8*y,&nwb,&nbb);
-        play(x,y,&wb,&bb);
-        display(wb,bb);
-        fflush(stdout);
-        if ((nwb!=wb)||(nbb!=bb)) {
-          printf("zorglab\n");
-          display(nwb,nbb);
-          exit(-1);
-        }
+  signal(SIGALRM,handler);
+  while (playable(myb,opb)||playable(opb,myb)) {
+    if ((player==1)&&(playable(myb,opb))) {
+      clock_t time=clock();
+      int nb_free=NB_BITS(~(myb|opb));
+      fprintf(stderr,"nb_free=%d\n",nb_free);
+      int16_t alpha=-MAXV,beta=MAXV,res;
+      timer.it_value.tv_sec=time_play;
+      timer.it_value.tv_usec=0;
+      setitimer(ITIMER_REAL,&timer,NULL);
+      get_out=false;
+      int old_best=INVALID_MOVE;
+      for (uint8_t maxdepth=depth+2;;maxdepth++) {
+      back:
+	best_move=INVALID_MOVE;
+	res = ab(myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
+	double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
+	fprintf(stderr,"alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
+		alpha,beta,depth,maxdepth,best_move,res,ftime);
+	if (res==GET_OUT) {
+	  if (best_move==INVALID_MOVE) best_move=old_best;
+	  break;
+	}
+	else {
+	  old_best=best_move;
+	  evals[maxdepth]=res;
+	  if (best_move<0){
+	    fprintf(stderr,"Invalid move=%d\n",best_move);
+	    exit(-1);
+	  }
+	  if ((res<=alpha)||(res>=beta)) {alpha=res-1;beta=res+1;goto back;}
+	  if (abs(res)>WIN) break;
+	  alpha=evals[maxdepth-1]-3;beta=evals[maxdepth-1]+3;
+	}
       }
-      depth++;
-      if (playable(bb,wb)) {
-        opp_pass=false;
-        char *s=NULL;
-        long unsigned int n=0;
-        do {
-          long int ret=getline(&s,&n,stdin);
-          if (ret==-1) {
-            fprintf(stderr,"getline failed\n");
-            exit(-1);
-          }
-          int move=atoi(s);
-          x = move%10;y=move/10;
-          printf("x=%d y=%d\n",x,y);
-        } while ((!CHECK(x,y))||(IS_SET_XY(wb|bb,x,y))||(!play(x,y,&bb,&wb)));
-        display(wb,bb);
-        free(s);
-      }
-      else opp_pass=true;
-      depth++;
+      fprintf(stderr,"my_move=%d\n",best_move);
+      printf("%d\n",best_move);
+      fflush(stdout);
+      play8(best_move,&myb,&opb);
+      display(myb,opb);
     }
-  printf("res=%d\n",NB_BITS(wb)-NB_BITS(bb));
+    player=1;
+    depth++;
+    if (playable(opb,myb)) {
+      int x,y;
+      opp_pass=false;
+      char *s=NULL;
+      long unsigned int n=0;
+      do {
+	fprintf(stderr,"your_move:");
+	fflush(stderr);
+	long int ret=getline(&s,&n,stdin);
+	if (ret==-1) {
+	  fprintf(stderr,"getline failed\n");
+	  exit(-1);
+	}
+	int move=atoi(s);
+	x = move%8;y=move/8;
+	fprintf(stderr,"move=%d\n",move);
+      } while ((!CHECK(x,y))||(IS_SET_XY(myb|opb,x,y))||(!play(x,y,&opb,&myb)));
+      display(myb,opb);
+      free(s);
+    }
+    else opp_pass=true;
+    depth++;
+  }
+  fprintf(stderr,"res=%d\n",NB_BITS(myb)-NB_BITS(opb));
   return 0;
 }
