@@ -524,6 +524,7 @@ _hash_t {
   int8_t bmove;
   uint64_t myb;
   uint64_t opb;
+  int8_t pass;
   int16_t v_sup,v_inf;
   uint8_t base;
   uint8_t dist;
@@ -533,9 +534,10 @@ hash_t *hashv;
 #define PASS (-2)
 #define INVALID_MOVE (-1)
 
-bool retrieve_v_hash(uint64_t myb,uint64_t opb,uint32_t ind,
+bool retrieve_v_hash(uint64_t myb,uint64_t opb,int8_t pass,uint32_t ind,
                     int16_t *v_inf,int16_t *v_sup,int8_t *bmove,uint8_t dist) {
-  if ((hashv[ind].opb==opb)&&(hashv[ind].myb==myb)) {
+  if ((hashv[ind].opb==opb)&&(hashv[ind].myb==myb)&&
+      (hashv[ind].pass==pass)) {
     if ((hashv[ind].dist==dist)
         ||
         ((hashv[ind].v_inf==hashv[ind].v_sup)&&(ABS(hashv[ind].v_inf)>=WIN))
@@ -551,30 +553,35 @@ bool retrieve_v_hash(uint64_t myb,uint64_t opb,uint32_t ind,
   return false;
 }
 
-void store_v_hash_both(uint64_t myb,uint64_t opb,uint32_t ind,int16_t v,
+void store_v_hash_both(uint64_t myb,uint64_t opb,int8_t pass,
+                       uint32_t ind,int16_t v,
                        uint8_t dist,uint8_t base,int8_t move) {
   if ((hashv[ind].base!=base)||(hashv[ind].dist<=dist)) {
     hashv[ind].v_inf=v;
     hashv[ind].v_sup=v;
     hashv[ind].myb=myb;
     hashv[ind].opb=opb;
+    hashv[ind].pass=pass;
     hashv[ind].base=base;
     hashv[ind].bmove=move;
     hashv[ind].dist=dist;
     };
 }
 
-void store_v_hash(uint64_t myb,uint64_t opb,uint32_t ind,
+void store_v_hash(uint64_t myb,uint64_t opb,
+                  int8_t pass,uint32_t ind,
                   int16_t alpha,int16_t beta,int16_t g,
                   uint8_t dist,uint8_t base,int8_t move) {
   if ((hashv[ind].base!=base)||(hashv[ind].dist<=dist)) {
-    if ((hashv[ind].myb!=myb) ||(hashv[ind].opb!=opb) || (hashv[ind].dist!=dist)) {
+    if ((hashv[ind].myb!=myb) ||(hashv[ind].opb!=opb)
+        ||(hashv[ind].pass!=pass) || (hashv[ind].dist!=dist)) {
       /* Not an update. Have to initialize/reset everything */
       hashv[ind].v_inf=-MAXV;
       hashv[ind].v_sup=MAXV;
       hashv[ind].dist=dist;
       hashv[ind].myb=myb;
       hashv[ind].opb=opb;
+      hashv[ind].pass=pass;
     }
     hashv[ind].base=base;
     hashv[ind].bmove=move;
@@ -584,13 +591,14 @@ void store_v_hash(uint64_t myb,uint64_t opb,uint32_t ind,
     };
 }
 
-uint32_t t_myb[4][65536],t_opb[4][65536];
+uint32_t t_myb[4][65536],t_opb[4][65536],t_pass;
 void init_idx() {
   for (int i=0;i<4;i++)
     for (int j=0;j<65536;j++) {
       t_myb[i][j]=(uint32_t)((uint64_t)lrand48()&MASK_H);
       t_opb[i][j]=(uint32_t)((uint64_t)lrand48()&MASK_H);
     }
+  t_pass=(uint32_t)((uint64_t)lrand48()&MASK_H);
 }
 
 void init_hash() {
@@ -611,7 +619,7 @@ void init_all() {
   init_masks();
 }
 
-uint32_t compute_ind(uint64_t myb,uint64_t opb) {
+uint32_t compute_ind(uint64_t myb,uint64_t opb,bool pass) {
   uint32_t ind = 0;
   for (int i=0;i<4;i++) {
     ind ^= t_myb[i][myb&0xffff];
@@ -619,6 +627,7 @@ uint32_t compute_ind(uint64_t myb,uint64_t opb) {
     ind ^= t_opb[i][opb&0xffff];
     opb = opb >> 16;
   }
+  if (pass) ind ^= t_pass;
   return ind;
 }
 
@@ -641,9 +650,9 @@ int16_t ab(uint64_t myb,uint64_t opb,
   int16_t v=-MAXV;
   bool lpass=true;
   int8_t lmove=INVALID_MOVE,nsq=INVALID_MOVE;
-  uint32_t ind = compute_ind(myb,opb);
+  uint32_t ind = compute_ind(myb,opb,pass);
   int16_t v_inf,v_sup;
-  if (retrieve_v_hash(myb,opb,ind,&v_inf,&v_sup,&nsq,maxdepth-depth)) {
+  if (retrieve_v_hash(myb,opb,pass,ind,&v_inf,&v_sup,&nsq,maxdepth-depth)) {
     if (depth==base) {best_move=nsq;}
     if (v_inf==v_sup) return v_inf; /* Exact evaluation */
     if (v_inf>=beta) return v_inf; /* Beta cut */
@@ -683,7 +692,7 @@ pass:
       v = NB_BITS(myb)-NB_BITS(opb);
       if (v>0) v=WIN+v;
       else if (v<0) v=-WIN+v;
-      store_v_hash_both(myb,opb,ind,v,maxdepth-depth,base,PASS);
+      store_v_hash_both(myb,opb,pass,ind,v,maxdepth-depth,base,PASS);
       return v;
     }
     else {
@@ -692,7 +701,7 @@ pass:
     }
   }
 fin:
-  store_v_hash(myb,opb,ind,alpha,beta,v,maxdepth-depth,base,lmove);
+  store_v_hash(myb,opb,pass,ind,alpha,beta,v,maxdepth-depth,base,lmove);
   return v;
 }
 
