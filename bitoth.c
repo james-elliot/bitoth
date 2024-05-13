@@ -19,13 +19,14 @@
    ({ __typeof__ (a) _a = (a); \
      _a > 0 ? _a : -_a; })
 
-#define CHECK(x,y) (((x)>=0)&&((x)<8)&&((y)>=0)&&((y)<8))
 
+#define CHECK_XY(x,y) (((x)>=0)&&((x)<8)&&((y)>=0)&&((y)<8))
 #define IS_SET_XY(a,x,y) ((a)&((uint64_t)1<<((x)|((y)<<3))))
 #define SET_XY(a,x,y) ((a)|=((uint64_t)1<<((x)|((y)<<3))))
 #define CLEAR_XY(a,x,y) ((a)&= ~((uint64_t)1<<((x)|((y)<<3))))
 #define FLIP_XY(a,x,y) ((a)^=((uint64_t)1<<((x)|((y)<<3))))
 
+#define CHECK(x) (((x)>=0)&&((x)<64))
 #define IS_SET(a,x) ((a)&((uint64_t)1<<((x))))
 #define SET(a,x) ((a)|=((uint64_t)1<<((x))))
 #define CLEAR(a,x) ((a)&= ~((uint64_t)1<<((x))))
@@ -52,7 +53,7 @@ void init_masks() {
       masks[n]=0;
       for (int dx=-1;dx<=1;dx++) {
         for (int dy=-1;dy<=1;dy++) {
-          if CHECK(x+dx,y+dy) {
+          if CHECK_XY(x+dx,y+dy) {
               SET_XY(masks[n],x+dx,y+dy);
             }
         }
@@ -73,7 +74,7 @@ void init_dep2() {
           int nx=x,ny=y;
           while (true) {
             nx+=dx;ny+=dy;
-            if (CHECK(nx,ny)) dep[i][j][k]=(int8_t)(nx+(ny<<3));
+            if (CHECK_XY(nx,ny)) dep[i][j][k]=(int8_t)(nx+(ny<<3));
             else break;
             k++;
           }
@@ -300,14 +301,15 @@ bool play5(int x,uint64_t *myb,uint64_t *opb) {
 
 bool play8(int x,uint64_t *myb,uint64_t *opb) {
   bool valid=false;
-  int8_t** curi;
-  curi=deps4[x];
+  int8_t **curi=deps4[x],j;
+  uint64_t *m44=masks44[x],*m45=masks45[x],m;
+  int n;
   for (int i=0;curi[i]!=NULL;i++) {
-    int8_t j=*curi[i];
+    j=*curi[i];
     if (IS_SET(*opb,j)) {
-      uint64_t m=*myb&masks44[x][i];
+      //    if (true) {
+      m=*myb&m44[i];
       if (m>0) {
-        int n;
         if (j>x) {
           n=TRAIL_BIT(m);
           m=(((uint64_t)1<<n)-1);
@@ -316,7 +318,7 @@ bool play8(int x,uint64_t *myb,uint64_t *opb) {
           n=64-LEAD_BIT(m);
           m=~(((uint64_t)1<<n)-1);
         }
-        m&=masks45[x][i];
+	m&=m45[i];
         if ((*opb&m)==m) {
           valid=true;
           *opb^=m;
@@ -381,17 +383,18 @@ bool play2(int x,uint64_t *myb,uint64_t *opb) {
   return valid;
 }
 
-bool play(int x,int y,uint64_t *myb,uint64_t *opb) {
+bool play(int sq,uint64_t *myb,uint64_t *opb) {
   bool valid = false;
+  int x=sq%8,y=sq/8;
 //  if (IS_SET_XY(x,y,*myb | *opb)) return false;
   for (int dx=-1;dx<=1;dx++) {
     for (int dy=-1;dy<=1;dy++) {
       if ((dx==0)&&(dy==0)) continue;
-      if (CHECK(x+dx,y+dy) && IS_SET_XY(*opb,x+dx,y+dy)) {
+      if (CHECK_XY(x+dx,y+dy) && IS_SET_XY(*opb,x+dx,y+dy)) {
         int nx=x+dx,ny=y+dy;
         do {
           nx+=dx;ny+=dy;
-          if (!CHECK(nx,ny)) break;
+          if (!CHECK_XY(nx,ny)) break;
           if IS_SET_XY(*myb,nx,ny) {
               valid=true;
               nx-=dx;ny-=dy;
@@ -409,10 +412,6 @@ bool play(int x,int y,uint64_t *myb,uint64_t *opb) {
   }
   if (valid) SET_XY(*myb,x,y);
   return valid;
-}
-
-bool playb(int sq,uint64_t *myb,uint64_t *opb) {
-  return play(sq%8,sq/8,myb,opb);
 }
 
 int testable(uint64_t r,uint64_t myb,uint64_t opb,bool pl(int,uint64_t*,uint64_t*)) {
@@ -434,9 +433,21 @@ bool playable(uint64_t myb,uint64_t opb) {
   while (es) {
     int sq = IND_BIT(es)-1;
     FLIP(es,sq);
-    if (play2(sq,&myb,&opb)) return true;
+    if (play8(sq,&myb,&opb)) return true;
   }
   return false;
+}
+
+int all_moves(uint64_t myb,uint64_t opb,int *moves) {
+  uint64_t es = ~(myb|opb);
+  int n=0;
+  while (es) {
+    uint64_t nmyb=myb,nopb=opb;
+    int sq = IND_BIT(es)-1;
+    FLIP(es,sq);
+    if (play8(sq,&nmyb,&nopb)) moves[n++]=sq;
+  }
+  return n;
 }
 
 int eval_lib(uint64_t b,uint64_t es) {
@@ -466,12 +477,12 @@ int eval_corner(uint64_t myb,uint64_t opb,int c,int oc,int cl, int cr) {
 
 int eval_pos(uint64_t myb,uint64_t opb) {
   int ev = 0;
-  ev+=eval_corner(myb,opb,0,9,1,8);
-  ev+=eval_corner(myb,opb,7,14,6,15);
+  ev+=eval_corner(myb,opb, 0, 9, 1, 8);
+  ev+=eval_corner(myb,opb, 7,14, 6,15);
   ev+=eval_corner(myb,opb,56,49,48,57);
   ev+=eval_corner(myb,opb,63,54,62,55);
-  ev-=eval_corner(opb,myb,0,9,1,8);
-  ev-=eval_corner(opb,myb,7,14,6,15);
+  ev-=eval_corner(opb,myb, 0, 9, 1, 8);
+  ev-=eval_corner(opb,myb, 7,14, 6,15);
   ev-=eval_corner(opb,myb,56,49,48,57);
   ev-=eval_corner(opb,myb,63,54,62,55);
   return ev;
@@ -506,6 +517,7 @@ void display(uint64_t wb,uint64_t bb) {
 #define SIZE_H ((uint64_t)1<<NB_BITS_H)
 #define MASK_H (SIZE_H-1)
 
+typedef
 struct
 __attribute__((packed))
 _hash_t {
@@ -515,8 +527,7 @@ _hash_t {
   int16_t v_sup,v_inf;
   uint8_t base;
   uint8_t dist;
-};
-typedef struct _hash_t hash_t;
+} hash_t;
 hash_t *hashv;
 
 #define PASS (-2)
@@ -567,10 +578,9 @@ void store_v_hash(uint64_t myb,uint64_t opb,uint32_t ind,
     }
     hashv[ind].base=base;
     hashv[ind].bmove=move;
-    if ((g>alpha)&&(g<beta))
-      {hashv[ind].v_inf=(int16_t)g;hashv[ind].v_sup=(int16_t)g;}
-    else if (g<=alpha) hashv[ind].v_sup=(int16_t)g;
-    else if (g>=beta) hashv[ind].v_inf=(int16_t)g;
+    if ((g>alpha)&&(g<beta)) {hashv[ind].v_inf=g;hashv[ind].v_sup=g;}
+    else if (g<=alpha) hashv[ind].v_sup=g;
+    else if (g>=beta) hashv[ind].v_inf=g;
     };
 }
 
@@ -750,7 +760,7 @@ int main(int argc, char **argv) {
     int nb=10000000;
     for (uint64_t j=0;j<10;j++) {
       t1=clock();
-      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,playb);
+      for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f1+=f;
       t1=clock();
@@ -849,8 +859,14 @@ int main(int argc, char **argv) {
     player=1;
     depth++;
     if (playable(opb,myb)) {
-      int x,y;
       opp_pass=false;
+      int move;
+      int moves[64];
+      int nb=all_moves(opb,myb,moves);
+      fprintf(stderr,"moves:");
+      for (int i=0;i<nb;i++)
+	fprintf(stderr,"%3d",moves[i]);
+      fprintf(stderr,"\n");
       char *s=NULL;
       long unsigned int n=0;
       do {
@@ -861,10 +877,9 @@ int main(int argc, char **argv) {
 	  fprintf(stderr,"getline failed\n");
 	  exit(-1);
 	}
-	int move=atoi(s);
-	x = move%8;y=move/8;
+	move=atoi(s);
 	fprintf(stderr,"move=%d\n",move);
-      } while ((!CHECK(x,y))||(IS_SET_XY(myb|opb,x,y))||(!play(x,y,&opb,&myb)));
+      } while ((!CHECK(move))||(IS_SET(myb|opb,move))||(!play8(move,&opb,&myb)));
       display(myb,opb);
       free(s);
     }
