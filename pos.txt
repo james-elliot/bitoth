@@ -1,10 +1,10 @@
-70  X  X  X  .  .  .  .  .
-60  X  X  .  O  .  .  .  .
-50  X  O  O  O  O  O  O  O
-40  X  O  X  X  O  O  .  O
-30  X  O  X  X  X  O  O  O
-20  X  O  X  X  X  X  O  O
-10  X  O  X  O  X  O  O  .
- 0  X  X  X  X  X  X  X  .
+ 0  .  X  X  X  X  X  X  X
+ 8  O  O  O  O  O  O  X  X
+16  O  O  O  X  O  O  X  X
+24  O  O  O  O  X  O  X  X
+32  O  X  O  O  X  O  X  X
+40  O  O  O  X  O  O  X  X
+48  .  O  O  O  O  O  X  X
+56  .  .  O  .  .  .  .  X
     0  1  2  3  4  5  6  7
-
+    

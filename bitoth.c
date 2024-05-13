@@ -847,7 +847,13 @@ int main(int argc, char **argv) {
 	  }
 	  if ((res<=alpha)||(res>=beta)) {alpha=res-1;beta=res+1;goto back;}
 	  if (abs(res)>WIN) break;
-	  alpha=evals[maxdepth-1]-3;beta=evals[maxdepth-1]+3;
+	  if (((res>=evals[maxdepth-1])&&(maxdepth%2==1)) ||
+	      ((res<=evals[maxdepth-1])&&(maxdepth%2==0))) {
+	    alpha=res-3;beta=res+3;
+	  }
+	  else {
+	    alpha=evals[maxdepth-1]-3;beta=evals[maxdepth-1]+3;
+	  }
 	}
       }
       fprintf(stderr,"my_move=%d\n",best_move);
