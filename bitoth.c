@@ -624,6 +624,18 @@ uint64_t compute_hash(uint64_t myb,uint64_t opb,bool pass) {
   return hv;
 }
 
+uint64_t compute_hash2(uint64_t myb,uint64_t opb,bool pass) {
+  uint64_t hv = 0;
+  uint16_t *pm,*po;
+  pm=(uint16_t *)&myb;po=(uint16_t *)&opb;
+  for (int i=0;i<4;i++) {
+    hv ^= t_myb[i][pm[i]];
+    hv ^= t_opb[i][po[i]];
+  }
+  if (pass) hv ^= t_pass;
+  return hv;
+}
+
 int best_move;
 
 int16_t ab(uint64_t myb,uint64_t opb,
