@@ -689,27 +689,7 @@ int16_t ab(uint64_t myb,uint64_t opb,
        uint8_t depth,uint8_t base,uint8_t maxdepth,
        bool pass) {
   node++;
-  uint64_t es = ~(myb|opb);
-  /*
-  {
-    uint64_t oldes=es;
-    for (linkm *c=first;c!=NULL;c=c->next) {
-      uint8_t sq=c->m;
-      if (!IS_SET(oldes,sq)) {
-	fprintf(stderr,"missing sq=%d depth=%d node=%d nes=%016lx es=%016lx oldes=%016lx\n",sq,depth,node,myb|opb,es,oldes);
-	display(myb,opb);
-	exit(-1);
-      }
-      FLIP(oldes,sq);
-    }
-    if (oldes!=0) {
-      uint8_t sq=IND_BIT(oldes)-1;
-      fprintf(stderr,"additional sq=%d\n",sq);
-      exit(-1);
-    }
-  }
-  */
-  if (es==0) {
+  if (~(myb|opb)==0) {
     int16_t v = NB_BITS(myb)-NB_BITS(opb);
     if (v>0) v=WIN+v;
     else if (v<0) v=-WIN+v;
@@ -731,19 +711,17 @@ int16_t ab(uint64_t myb,uint64_t opb,
     alpha=MAX(alpha,v_inf);
     beta=MIN(beta,v_sup);
   }
-  int8_t sq;
   int16_t a=alpha;
   if (nsq==PASS) goto pass;
-  uint64_t oldes=es;
   bool flag;
   if (nsq>=0) flag=true; else flag=false;
-  linkm *back;
   for (linkm *curr=first;curr!=NULL;curr=curr->next) {
+  int8_t sq;
+  linkm *back;
   again:
     if (flag) {
-      int8_t ni = revind[nsq];
       sq=nsq;
-      back=&allm[ni];
+      back=&allm[revind[nsq]];
     }
     else {
       sq=curr->m;
@@ -751,20 +729,6 @@ int16_t ab(uint64_t myb,uint64_t opb,
       back=curr;
     }
     remove_move(back);
-    if (!IS_SET(es,sq)) {
-      fprintf(stderr,"depth=%d node=%d\n",depth,node);
-      for (linkm *c=first;c!=NULL;c=c->next)
-	fprintf(stderr,"%d ",c->m);
-      fprintf(stderr,"\n");
-      while(oldes) {
-	sq=IND_BIT(oldes)-1;
-	FLIP(oldes,sq);
-	fprintf(stderr,"%d ",sq);
-      }
-      fprintf(stderr,"\n");
-      exit(-1);
-    }
-    FLIP(es,sq);
     uint64_t nmyb=myb,nopb=opb;
     if (play8(sq,&nmyb,&nopb)) {
       lpass=false;
@@ -786,16 +750,6 @@ int16_t ab(uint64_t myb,uint64_t opb,
       flag=false;
       goto again;
     }
-  }
-  if (es!=0) {
-    uint8_t sq=IND_BIT(oldes)-1;
-    fprintf(stderr,"depth=%d Zorgblsd=%016lx sq=%d nsq=%d\n",depth,es,sq,nsq);
-    for (linkm *c=first;c!=NULL;c=c->next) {
-      uint8_t sq=c->m;
-      fprintf(stderr,"%d ",sq);
-    }
-    fprintf(stderr,"\n");
-    exit(-1);
   }
 pass:
   if (lpass) {
