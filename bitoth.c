@@ -536,7 +536,6 @@ int16_t eval(uint64_t myb,uint64_t opb) {
   uint64_t es = ~(myb|opb);
 //  int nb = NB_BITS(es);
 //  int vdisc = (NB_BITS(myb)-NB_BITS(opb));
-//  if (nb<=12) return vdisc;
   int vpos = eval_pos(myb,opb);
   int vlib = -(eval_lib(myb,es)-eval_lib(opb,es));
   return (int16_t)(vpos+vlib);
@@ -780,7 +779,7 @@ void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
   char *s=NULL;
   long unsigned int n=0;
   FILE *fp=fopen(name,"r");
-  for (int j=7;j>=0;j--) {
+  for (int j=0;j<=7;j++) {
     long int ret=getline(&s,&n,fp);
     if (ret==-1) {
       fprintf(stderr,"getline failed\n");
