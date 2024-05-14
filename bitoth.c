@@ -44,6 +44,50 @@ void handler(__attribute__((unused))int signum) {get_out=true;};
 #define MAXV 32766
 #define WIN 32700
 
+#define NB_MOVES 64
+int moves[NB_MOVES]={
+   0, 7,56,63, /* A1 */
+   2, 5,16,23,40,47,58,61, /* C1 */
+  18,21,42,45, /* C3 */
+   3, 4,24,31,32,39,59,60, /* D1 */
+  19,29,26,20,34,37,43,44, /* D3 */
+  11,12,25,30,33,38,51,52, /* D2 */
+  10,13,17,22,41,46,50,53, /* C2 */
+   1, 6, 8,15,48,55,57,62, /* B1 */
+   9,14,49,54, /* B2 */
+   27,28,35,36 /* D4 */
+};
+
+typedef struct _linkm {
+  uint8_t m;
+  struct _linkm *next,*prev;
+} linkm;
+linkm allm[NB_MOVES];
+linkm *first;
+int8_t revind[NB_MOVES];
+void init_moves() {
+  for (int i=0;i<NB_MOVES;i++) {
+    allm[i].m=moves[i];
+    if (i>0) allm[i].prev=&allm[i-1];
+    if (i<NB_MOVES-1) allm[i].next=&allm[i+1];
+    revind[moves[i]]=i;
+  }
+  allm[0].prev=NULL;
+  allm[NB_MOVES-1].next=NULL;
+  first = &allm[0];
+}
+
+void remove_move(linkm *curr) {
+  if (curr->prev!=NULL) curr->prev->next=curr->next;
+  else first=curr->next;
+  if (curr->next!=NULL) curr->next->prev=curr->prev;
+}
+
+void add_move(linkm *curr) {
+  if (curr->prev!=NULL) curr->prev->next=curr;
+  else first=curr;
+  if (curr->next!=NULL) curr->next->prev=curr;
+}
 
 uint64_t masks[64];
 void init_masks() {
@@ -610,6 +654,7 @@ void init_all() {
   init_idx();
   init_hash();
   init_masks();
+  init_moves();
 }
 
 uint64_t compute_hash(uint64_t myb,uint64_t opb,bool pass) {
@@ -637,12 +682,33 @@ uint64_t compute_hash2(uint64_t myb,uint64_t opb,bool pass) {
 }
 
 int best_move;
+int node=0;
 
 int16_t ab(uint64_t myb,uint64_t opb,
        int16_t alpha,int16_t beta,
        uint8_t depth,uint8_t base,uint8_t maxdepth,
        bool pass) {
+  node++;
   uint64_t es = ~(myb|opb);
+  /*
+  {
+    uint64_t oldes=es;
+    for (linkm *c=first;c!=NULL;c=c->next) {
+      uint8_t sq=c->m;
+      if (!IS_SET(oldes,sq)) {
+	fprintf(stderr,"missing sq=%d depth=%d node=%d nes=%016lx es=%016lx oldes=%016lx\n",sq,depth,node,myb|opb,es,oldes);
+	display(myb,opb);
+	exit(-1);
+      }
+      FLIP(oldes,sq);
+    }
+    if (oldes!=0) {
+      uint8_t sq=IND_BIT(oldes)-1;
+      fprintf(stderr,"additional sq=%d\n",sq);
+      exit(-1);
+    }
+  }
+  */
   if (es==0) {
     int16_t v = NB_BITS(myb)-NB_BITS(opb);
     if (v>0) v=WIN+v;
@@ -668,27 +734,68 @@ int16_t ab(uint64_t myb,uint64_t opb,
   int8_t sq;
   int16_t a=alpha;
   if (nsq==PASS) goto pass;
-  while (es) {
-    if (nsq>=0) {
+  uint64_t oldes=es;
+  bool flag;
+  if (nsq>=0) flag=true; else flag=false;
+  linkm *back;
+  for (linkm *curr=first;curr!=NULL;curr=curr->next) {
+  again:
+    if (flag) {
+      int8_t ni = revind[nsq];
       sq=nsq;
-      nsq=INVALID_MOVE;
+      back=&allm[ni];
     }
-    else
-      sq=IND_BIT(es)-1;
+    else {
+      sq=curr->m;
+      if (sq==nsq) continue;
+      back=curr;
+    }
+    remove_move(back);
+    if (!IS_SET(es,sq)) {
+      fprintf(stderr,"depth=%d node=%d\n",depth,node);
+      for (linkm *c=first;c!=NULL;c=c->next)
+	fprintf(stderr,"%d ",c->m);
+      fprintf(stderr,"\n");
+      while(oldes) {
+	sq=IND_BIT(oldes)-1;
+	FLIP(oldes,sq);
+	fprintf(stderr,"%d ",sq);
+      }
+      fprintf(stderr,"\n");
+      exit(-1);
+    }
     FLIP(es,sq);
     uint64_t nmyb=myb,nopb=opb;
     if (play8(sq,&nmyb,&nopb)) {
       lpass=false;
       int16_t nv = -ab(nopb,nmyb,-beta,-a,depth+1,base,maxdepth,false);
+      add_move(back);
       if (get_out) return GET_OUT;
       if (nv>v) {
         v=nv;
         lmove=sq;
         if (depth==base) best_move=sq;
         a=MAX(a,v);
-        if (a>=beta) goto fin;
+        if (a>=beta) {
+	  goto fin;
+	}
       }
     }
+    else add_move(back);
+    if (flag) {
+      flag=false;
+      goto again;
+    }
+  }
+  if (es!=0) {
+    uint8_t sq=IND_BIT(oldes)-1;
+    fprintf(stderr,"depth=%d Zorgblsd=%016lx sq=%d nsq=%d\n",depth,es,sq,nsq);
+    for (linkm *c=first;c!=NULL;c=c->next) {
+      uint8_t sq=c->m;
+      fprintf(stderr,"%d ",sq);
+    }
+    fprintf(stderr,"\n");
+    exit(-1);
   }
 pass:
   if (lpass) {
@@ -710,6 +817,11 @@ fin:
   return v;
 }
 
+void set_pawn(uint64_t *b,int x,int y) {
+  SET_XY(*b,x,y);
+  remove_move(&allm[revind[y*8+x]]);
+}
+
 void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
   char *s=NULL;
   long unsigned int n=0;
@@ -724,10 +836,10 @@ void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
     for (int i=0;i<=7;i++) {
       switch (s[4+3*i]) {
       case 'X' :
-        SET_XY(*wb,i,j);
+        set_pawn(wb,i,j);
         break;
       case 'O' :
-        SET_XY(*bb,i,j);
+        set_pawn(bb,i,j);
         break;
       case '.' :
         break;
@@ -813,16 +925,16 @@ int main(int argc, char **argv) {
   }
   else {
     if (player==1) {
-      SET_XY(opb,3,4);
-      SET_XY(opb,4,3);
-      SET_XY(myb,3,3);
-      SET_XY(myb,4,4);
+      set_pawn(&opb,3,4);
+      set_pawn(&opb,4,3);
+      set_pawn(&myb,3,3);
+      set_pawn(&myb,4,4);
     }
     else {
-      SET_XY(myb,3,4);
-      SET_XY(myb,4,3);
-      SET_XY(opb,3,3);
-      SET_XY(opb,4,4);
+      set_pawn(&myb,3,4);
+      set_pawn(&myb,4,3);
+      set_pawn(&opb,3,3);
+      set_pawn(&opb,4,4);
     }
   }
   display(myb,opb);
@@ -874,6 +986,7 @@ int main(int argc, char **argv) {
       printf("%d\n",best_move);
       fflush(stdout);
       play8(best_move,&myb,&opb);
+      remove_move(&allm[revind[best_move]]);
       display(myb,opb);
     }
     player=1;
@@ -900,6 +1013,7 @@ int main(int argc, char **argv) {
 	move=atoi(s);
 	fprintf(stderr,"move=%d\n",move);
       } while ((!CHECK(move))||(IS_SET(myb|opb,move))||(!play8(move,&opb,&myb)));
+      remove_move(&allm[revind[move]]);
       display(myb,opb);
       free(s);
     }
