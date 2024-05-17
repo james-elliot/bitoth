@@ -7,17 +7,22 @@
 #include <sys/time.h>
 #include <signal.h>
 
-#define MAX(a,b) \
-   ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-     _a > _b ? _a : _b; })
-#define MIN(a,b) \
-   ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
-     _a > _b ? _a : _b; })
-#define ABS(a) \
-   ({ __typeof__ (a) _a = (a); \
-     _a > 0 ? _a : -_a; })
+/*
+ 0: /dev/null
+ 1: log.txt
+ otherwise: stderr
+*/
+#define LOG_OUTPUT 2
+FILE *flog;
+
+#define MAX(a,b)\
+  ({ __typeof__ (a) _a = (a);			\
+    __typeof__ (b) _b = (b);			\
+    _a = _a > _b ? _a : _b; })                  // Storing the result in _a silences some unpleasant conversion warnings
+#define MIN(a,b)\
+  ({ __typeof__ (a) _a = (a);			\
+    __typeof__ (b) _b = (b);			\
+    _a = _a > _b ? _a : _b; })
 
 
 #define CHECK_XY(x,y) (((x)>=0)&&((x)<8)&&((y)>=0)&&((y)<8))
@@ -44,8 +49,11 @@ void handler(__attribute__((unused))int signum) {get_out=true;};
 #define MAXV 32766
 #define WIN 32700
 
+
+// Structures for move ordering
+// The program is slightly faster with them
 #define NB_MOVES 64
-int moves[NB_MOVES]={
+int8_t moves[NB_MOVES]={
    0, 7,56,63, /* A1 */
    2, 5,16,23,40,47,58,61, /* C1 */
   18,21,42,45, /* C3 */
@@ -59,14 +67,14 @@ int moves[NB_MOVES]={
 };
 
 typedef struct _linkm {
-  uint8_t m;
+  int8_t m;
   struct _linkm *next,*prev;
 } linkm;
 linkm allm[NB_MOVES];
 linkm *first;
 int8_t revind[NB_MOVES];
 void init_moves() {
-  for (int i=0;i<NB_MOVES;i++) {
+  for (int8_t i=0;i<NB_MOVES;i++) {
     allm[i].m=moves[i];
     if (i>0) allm[i].prev=&allm[i-1];
     if (i<NB_MOVES-1) allm[i].next=&allm[i+1];
@@ -89,6 +97,8 @@ void add_move(linkm *curr) {
   if (curr->next!=NULL) curr->next->prev=curr;
 }
 
+
+// General move masks
 uint64_t masks[64];
 void init_masks() {
   for (int x=0;x<8;x++) {
@@ -343,6 +353,7 @@ bool play5(int x,uint64_t *myb,uint64_t *opb) {
   return valid;
 }
 
+// The fastest one
 bool play8(int x,uint64_t *myb,uint64_t *opb) {
   bool valid=false;
   int8_t **curi=deps4[x],j;
@@ -544,16 +555,16 @@ int16_t eval(uint64_t myb,uint64_t opb) {
 
 void display(uint64_t wb,uint64_t bb) {
   for (int j=0;j<=7;j++) {
-    fprintf(stderr,"%2d ",8*j);
+    fprintf(flog,"%2d ",8*j);
     for (int i=0;i<8;i++) {
-      if IS_SET_XY(wb,i,j) fprintf(stderr," X ");
-      else if IS_SET_XY(bb,i,j) fprintf(stderr," O ");
-      else fprintf(stderr," . ");
+      if IS_SET_XY(wb,i,j) fprintf(flog," X ");
+      else if IS_SET_XY(bb,i,j) fprintf(flog," O ");
+      else fprintf(flog," . ");
     }
-    fprintf(stderr,"\n");
+    fprintf(flog,"\n");
   }
-  fprintf(stderr,"    0  1  2  3  4  5  6  7\n");
-  fprintf(stderr,"eval_pos=%d\n",eval_pos(wb,bb));
+  fprintf(flog,"    0  1  2  3  4  5  6  7\n");
+  fprintf(flog,"eval_pos=%d\n",eval_pos(wb,bb));
 }
 
 #define NB_BITS_H 27
@@ -581,7 +592,7 @@ bool retrieve_v_hash(uint64_t hv,
   if (hashv[ind].hv==hv) {
     if ((hashv[ind].dist==dist)
         ||
-        ((hashv[ind].v_inf==hashv[ind].v_sup)&&(ABS(hashv[ind].v_inf)>=WIN))
+        ((hashv[ind].v_inf==hashv[ind].v_sup)&&(abs(hashv[ind].v_inf)>=WIN))
 ) {
       *v_inf=hashv[ind].v_inf;
       *v_sup=hashv[ind].v_sup;
@@ -640,7 +651,7 @@ void init_idx() {
 void init_hash() {
   hashv = (hash_t *)calloc(SIZE_H,sizeof(hash_t));
   if (hashv==NULL) {
-    fprintf(stderr,"Error allocating memory\n");
+    fprintf(flog,"Error allocating memory\n");
     exit(-1);
   }
 }
@@ -782,10 +793,10 @@ void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
   for (int j=0;j<=7;j++) {
     long int ret=getline(&s,&n,fp);
     if (ret==-1) {
-      fprintf(stderr,"getline failed\n");
+      fprintf(flog,"getline failed\n");
       exit(-1);
     }
-    fprintf(stderr,"%s",s);
+    fprintf(flog,"%s",s);
     for (int i=0;i<=7;i++) {
       switch (s[4+3*i]) {
       case 'X' :
@@ -797,34 +808,49 @@ void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
       case '.' :
         break;
       default:
-        fprintf(stderr,"Zorglub!!!!\n");
+        fprintf(flog,"Zorglub!!!!\n");
         exit(-1);
         }
     }
   }
   fclose(fp);
-  fprintf(stderr,"End read\n");
+  fprintf(flog,"End read\n");
   free(s);
 }
 
 int main(int argc, char **argv) {
   struct itimerval timer={{0,0},{0,0}};
   uint64_t myb=0,opb=0;
+#if LOG_OUTPUT==0
+  flog=fopen("/dev/null","w");
+#elif LOG_OUTPUT==1
+  flog=fopen("log.txt","w");
+#else
+  flog=stderr;
+#endif
+  
+  if (flog==NULL) {
+    fprintf(stderr,"Can't open log\n");
+    exit(-1);
+  }
+  setvbuf(flog,NULL,_IONBF,0);
+  setvbuf(stdout,NULL,_IONBF,0);
+  
   init_all();
   if ((argc<3)||(argc>4)) {
-    fprintf(stderr,"Bad number of arguments\n");
+    fprintf(flog,"Bad number of arguments\n");
     exit(-1);
   }
   
   int player=atoi(argv[1]);
   if ((player!=1)&&(player!=2)) {
-    fprintf(stderr,"Bad player argument\n");
+    fprintf(flog,"Bad player argument\n");
     exit(-1);
   }
 
   int time_play=atoi(argv[2]);
   if ((time_play<=0)||(time_play>=120)) {
-    fprintf(stderr,"Bad time argument\n");
+    fprintf(flog,"Bad time argument\n");
     exit(-1);
   }
 
@@ -870,7 +896,7 @@ int main(int argc, char **argv) {
       for (uint64_t i=j*nb;i<(j+1)*nb;i++) n+=testable(i,myb,opb,play8);
       f=(double)(clock()-t1)/(double)CLOCKS_PER_SEC;
       f8+=f;
-      fprintf(stderr,"%15ld f1=%6.2f f2=%6.2f f3=%6.2f f4=%6.2f f5=%6.2f f6=%6.2f f7=%6.2f f8=%6.2f\n",
+      fprintf(flog,"%15ld f1=%6.2f f2=%6.2f f3=%6.2f f4=%6.2f f5=%6.2f f6=%6.2f f7=%6.2f f8=%6.2f\n",
              n,f1,f2,f3,f4,f5,f6,f7,f8);
     }
     exit(-1);
@@ -899,7 +925,7 @@ int main(int argc, char **argv) {
     if ((player==1)&&(playable(myb,opb))) {
       clock_t time=clock();
       int nb_free=NB_BITS(~(myb|opb));
-      fprintf(stderr,"nb_free=%d\n",nb_free);
+      fprintf(flog,"nb_free=%d\n",nb_free);
       int16_t alpha=-MAXV,beta=MAXV,res;
       timer.it_value.tv_sec=time_play;
       timer.it_value.tv_usec=0;
@@ -911,7 +937,7 @@ int main(int argc, char **argv) {
 	best_move=INVALID_MOVE;
 	res = ab(myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
 	double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
-	fprintf(stderr,"alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
+	fprintf(flog,"alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
 		alpha,beta,depth,maxdepth,best_move,res,ftime);
 	if (res==GET_OUT) {
 	  if (best_move==INVALID_MOVE) best_move=old_best;
@@ -921,7 +947,7 @@ int main(int argc, char **argv) {
 	  old_best=best_move;
 	  evals[maxdepth]=res;
 	  if (best_move<0){
-	    fprintf(stderr,"Invalid move=%d\n",best_move);
+	    fprintf(flog,"Invalid move=%d\n",best_move);
 	    exit(-1);
 	  }
 	  if ((res<=alpha)||(res>=beta)) {alpha=res-1;beta=res+1;goto back;}
@@ -935,9 +961,8 @@ int main(int argc, char **argv) {
 	  }
 	}
       }
-      fprintf(stderr,"my_move=%d\n",best_move);
+      fprintf(flog,"my_move=%d\n",best_move);
       printf("%d\n",best_move);
-      fflush(stdout);
       play8(best_move,&myb,&opb);
       remove_move(&allm[revind[best_move]]);
       display(myb,opb);
@@ -949,22 +974,21 @@ int main(int argc, char **argv) {
       int move;
       int moves[64];
       int nb=all_moves(opb,myb,moves);
-      fprintf(stderr,"moves:");
+      fprintf(flog,"moves:");
       for (int i=0;i<nb;i++)
-	fprintf(stderr,"%3d",moves[i]);
-      fprintf(stderr,"\n");
+	fprintf(flog,"%3d",moves[i]);
+      fprintf(flog,"\n");
       char *s=NULL;
       long unsigned int n=0;
       do {
-	fprintf(stderr,"your_move:");
-	fflush(stderr);
+	fprintf(flog,"your_move:");
 	long int ret=getline(&s,&n,stdin);
 	if (ret==-1) {
-	  fprintf(stderr,"getline failed\n");
+	  fprintf(flog,"getline failed\n");
 	  exit(-1);
 	}
 	move=atoi(s);
-	fprintf(stderr,"move=%d\n",move);
+	fprintf(flog,"move=%d\n",move);
       } while ((!CHECK(move))||(IS_SET(myb|opb,move))||(!play8(move,&opb,&myb)));
       remove_move(&allm[revind[move]]);
       display(myb,opb);
@@ -973,6 +997,6 @@ int main(int argc, char **argv) {
     else opp_pass=true;
     depth++;
   }
-  fprintf(stderr,"res=%d\n",NB_BITS(myb)-NB_BITS(opb));
+  fprintf(flog,"res=%d\n",NB_BITS(myb)-NB_BITS(opb));
   return 0;
 }
