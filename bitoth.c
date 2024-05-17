@@ -505,19 +505,101 @@ int all_moves(uint64_t myb,uint64_t opb,int *moves) {
   return n;
 }
 
-int eval_lib(uint64_t b,uint64_t es) {
-  int libs=0;
-  while(b) {
-    int sq = IND_BIT(b)-1;
-    b^=(uint64_t)1<<sq;
-    libs+=NB_BITS(es&masks[sq]);
+void display(uint64_t wb,uint64_t bb) {
+  for (int j=0;j<=7;j++) {
+    fprintf(flog,"%2d ",8*j);
+    for (int i=0;i<8;i++) {
+      if IS_SET_XY(wb,i,j) fprintf(flog," X ");
+      else if IS_SET_XY(bb,i,j) fprintf(flog," O ");
+      else fprintf(flog," . ");
+    }
+    fprintf(flog,"\n");
   }
-  return libs;
+  fprintf(flog,"    0  1  2  3  4  5  6  7\n");
+  fprintf(flog,"eval_pos=%d\n",eval_pos2(wb,bb));
+  fprintf(flog,"eval_pos=%d\n",eval_pos3(wb,bb));
 }
 
 #define VAL_C (50)
 #define VAL_OC (-20)
 #define VAL_LC (-5)
+
+#define NB_VALSP (1<<18)
+int16_t valsp_l[NB_VALSP],valsp_r[NB_VALSP];
+void init_vals_pos() {
+  for (uint64_t i = 0;i<NB_VALSP;i++) {
+    valsp_l[i]=0;
+    if (IS_SET(i,0)) valsp_l[i]=VAL_C;
+    else if (IS_SET(i,9)) valsp_l[i]=-VAL_C;
+    else {
+      if (IS_SET(i,4)) valsp_l[i]=VAL_OC;
+      if (IS_SET(i,13)) valsp_l[i]=-VAL_OC;
+      if (IS_SET(i,1)) valsp_l[i]+=VAL_LC;
+      if (IS_SET(i,10)) valsp_l[i]-=VAL_LC;
+      if (IS_SET(i,3)) valsp_l[i]+=VAL_LC;
+      if (IS_SET(i,12)) valsp_l[i]-=VAL_LC;
+    }
+    valsp_r[i]=0;
+    if (IS_SET(i,2)) valsp_r[i]=VAL_C;
+    else if (IS_SET(i,11)) valsp_r[i]=-VAL_C;
+    else {
+      if (IS_SET(i,4)) valsp_r[i]=VAL_OC;
+      if (IS_SET(i,13)) valsp_r[i]=-VAL_OC;
+      if (IS_SET(i,1)) valsp_r[i]+=VAL_LC;
+      if (IS_SET(i,10)) valsp_r[i]-=VAL_LC;
+      if (IS_SET(i,5)) valsp_r[i]+=VAL_LC;
+      if (IS_SET(i,14)) valsp_r[i]-=VAL_LC;
+    }
+  }
+}
+
+int eval_pos3(uint64_t myb,uint64_t opb) {
+  int ev = 0;
+  uint64_t mm,om,m;
+  mm=(myb&0x7)|((myb>>5)&0x38)|((myb>>10)&0x1c0);
+  om=(opb&0x7)|((opb>>5)&0x38)|((opb>>10)&0x1c0);
+  m = mm|(om<<9);
+  //  fprintf(flog,"%018lb %d\n",m,valsp_l[m]);
+  ev+=valsp_l[m];
+  mm=((myb>>56)&0x7)|((myb>>45)&0x38)|((myb>>34)&0x1c0);
+  om=((opb>>56)&0x7)|((opb>>45)&0x38)|((opb>>34)&0x1c0);
+  m = mm|(om<<9);
+  //  fprintf(flog,"%018lb %d\n",m,valsp_l[m]);
+  ev+=valsp_l[m];
+  mm=((myb>>5)&0x7)|((myb>>10)&0x38)|((myb>>15)&0x1c0);
+  om=((opb>>5)&0x7)|((opb>>10)&0x38)|((opb>>15)&0x1c0);
+  m = mm|(om<<9);
+  //  fprintf(flog,"%018lb %d\n",m,valsp_r[m]);
+  ev+=valsp_r[m];
+  mm=((myb>>61)&0x7)|((myb>>50)&0x38)|((myb>>39)&0x1c0);
+  om=((opb>>61)&0x7)|((opb>>50)&0x38)|((opb>>39)&0x1c0);
+  m = mm|(om<<9);
+  //  fprintf(flog,"%018lb %d\n",m,valsp_r[m]);
+  ev+=valsp_r[m];
+  return ev;
+}
+
+int eval_corner2(uint64_t myb,uint64_t opb,int c,int oc,int cl, int cr) {
+  if (IS_SET(myb,c)) return VAL_C;
+  if (IS_SET(opb,c)) return -VAL_C;
+  int ev = 0;
+  if (IS_SET(myb,oc)) ev+=VAL_OC;
+  if (IS_SET(opb,oc)) ev-=VAL_OC;
+  if (IS_SET(myb,cl)) ev+=VAL_LC;
+  if (IS_SET(opb,cl)) ev-=VAL_LC;
+  if (IS_SET(myb,cr)) ev+=VAL_LC;
+  if (IS_SET(opb,cr)) ev-=VAL_LC;
+  return ev;
+}
+
+int eval_pos2(uint64_t myb,uint64_t opb) {
+  int ev = 0;
+  ev+=eval_corner2(myb,opb, 0, 9, 1, 8);
+  ev+=eval_corner2(myb,opb, 7,14, 6,15);
+  ev+=eval_corner2(myb,opb,56,49,48,57);
+  ev+=eval_corner2(myb,opb,63,54,62,55);
+  return ev;
+}
 
 int eval_corner(uint64_t myb,uint64_t opb,int c,int oc,int cl, int cr) {
   int ev = 0;
@@ -543,29 +625,33 @@ int eval_pos(uint64_t myb,uint64_t opb) {
   return ev;
 }
 
+int eval_lib(uint64_t b,uint64_t es) {
+  int libs=0;
+  while(b) {
+    int sq = IND_BIT(b)-1;
+    b^=(uint64_t)1<<sq;
+    libs+=NB_BITS(es&masks[sq]);
+  }
+  return libs;
+}
+
 int16_t eval(uint64_t myb,uint64_t opb) {
   uint64_t es = ~(myb|opb);
 //  int nb = NB_BITS(es);
 //  int vdisc = (NB_BITS(myb)-NB_BITS(opb));
-  int vpos = eval_pos(myb,opb);
-  int vlib = -(eval_lib(myb,es)-eval_lib(opb,es));
-  return (int16_t)(vpos+vlib);
-}
-
-
-void display(uint64_t wb,uint64_t bb) {
-  for (int j=0;j<=7;j++) {
-    fprintf(flog,"%2d ",8*j);
-    for (int i=0;i<8;i++) {
-      if IS_SET_XY(wb,i,j) fprintf(flog," X ");
-      else if IS_SET_XY(bb,i,j) fprintf(flog," O ");
-      else fprintf(flog," . ");
-    }
-    fprintf(flog,"\n");
+//  int vpos = eval_pos2(myb,opb);
+  int vpos2= eval_pos3(myb,opb);
+  /*
+  if (vpos!=vpos2) {
+    display(myb,opb);
+    exit(-1);
   }
-  fprintf(flog,"    0  1  2  3  4  5  6  7\n");
-  fprintf(flog,"eval_pos=%d\n",eval_pos(wb,bb));
+  */
+  int vlib = -(eval_lib(myb,es)-eval_lib(opb,es));
+  return (int16_t)(vpos2+vlib);
 }
+
+
 
 #define NB_BITS_H 27
 #define SIZE_H ((uint64_t)1<<NB_BITS_H)
@@ -665,6 +751,7 @@ void init_all() {
   init_hash();
   init_masks();
   init_moves();
+  init_vals_pos();
 }
 
 uint64_t compute_hash(uint64_t myb,uint64_t opb,bool pass) {
