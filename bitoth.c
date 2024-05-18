@@ -521,9 +521,21 @@ void display(uint64_t wb,uint64_t bb) {
 }
 
 #define VAL_C (50)
-#define VAL_OC (-20)
-#define VAL_LC (-5)
-
+#define VAL_OC (-25)
+#define VAL_LC (-10)
+#define VAL_OOC (5)
+#define VAL_LLC (3)
+/*
+ There are 18 bits. The first 9 (LSB) represent the bits of the corner
+ of the player who moves, the 9 others, those of his opponent
+ valsp_l store value for left corners, and valsp_r for right corners
+ bit 0 is the lower left corner in valsp_l for my_board, bit 9 for other board
+ bit 2 is the higher right corner in valsp_r
+  6 7 8     0 1 2
+  3 4 5 and 3 4 5
+  0 1 2     6 7 8
+*/
+//Function not finished!!!
 #define NB_VALSP (1<<18)
 int16_t valsp_l[NB_VALSP],valsp_r[NB_VALSP];
 void init_vals_pos() {
@@ -533,11 +545,16 @@ void init_vals_pos() {
     else if (IS_SET(i,9)) valsp_l[i]=-VAL_C;
     else {
       if (IS_SET(i,4)) valsp_l[i]=VAL_OC;
-      if (IS_SET(i,13)) valsp_l[i]=-VAL_OC;
+      else if (IS_SET(i,13)) valsp_l[i]=-VAL_OC;
+      else {
+        if (IS_SET(i,8)) valsp_l[i]+=VAL_LLC;
+        else if (IS_SET(i,17)) valsp_l[i]-=VAL_LLC;
+      }
       if (IS_SET(i,1)) valsp_l[i]+=VAL_LC;
-      if (IS_SET(i,10)) valsp_l[i]-=VAL_LC;
+      else if (IS_SET(i,10)) valsp_l[i]-=VAL_LC;
+      
       if (IS_SET(i,3)) valsp_l[i]+=VAL_LC;
-      if (IS_SET(i,12)) valsp_l[i]-=VAL_LC;
+      else if (IS_SET(i,12)) valsp_l[i]-=VAL_LC;
     }
     valsp_r[i]=0;
     if (IS_SET(i,2)) valsp_r[i]=VAL_C;
@@ -915,20 +932,20 @@ int main(int argc, char **argv) {
 #else
   flog=stderr;
 #endif
-  
+
   if (flog==NULL) {
     fprintf(stderr,"Can't open log\n");
     exit(-1);
   }
   setvbuf(flog,NULL,_IONBF,0);
   setvbuf(stdout,NULL,_IONBF,0);
-  
+
   init_all();
   if ((argc<3)||(argc>4)) {
     fprintf(flog,"Bad number of arguments\n");
     exit(-1);
   }
-  
+
   int player=atoi(argv[1]);
   if ((player!=1)&&(player!=2)) {
     fprintf(flog,"Bad player argument\n");
@@ -936,12 +953,12 @@ int main(int argc, char **argv) {
   }
 
   int time_play=atoi(argv[2]);
-  if ((time_play<=0)||(time_play>=120)) {
+  if ((time_play<=0)||(time_play>=10000)) {
     fprintf(flog,"Bad time argument\n");
     exit(-1);
   }
 
-  
+
   if (argc==4) {
     set_pos(argv[3],&myb,&opb);
     /*
