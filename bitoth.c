@@ -516,15 +516,9 @@ void display(uint64_t wb,uint64_t bb) {
     fprintf(flog,"\n");
   }
   fprintf(flog,"    0  1  2  3  4  5  6  7\n");
-  fprintf(flog,"eval_pos=%d\n",eval_pos2(wb,bb));
   fprintf(flog,"eval_pos=%d\n",eval_pos3(wb,bb));
 }
 
-#define VAL_C (50)
-#define VAL_OC (-25)
-#define VAL_LC (-10)
-#define VAL_OOC (5)
-#define VAL_LLC (3)
 /*
  There are 18 bits. The first 9 (LSB) represent the bits of the corner
  of the player who moves, the 9 others, those of his opponent
@@ -538,8 +532,18 @@ void display(uint64_t wb,uint64_t bb) {
 //Function not finished!!!
 #define NB_VALSP (1<<18)
 int16_t valsp_l[NB_VALSP],valsp_r[NB_VALSP];
+#define VAL_C (50)
+#define VAL_OC (-25)
+#define VAL_LC (-10)
+#define VAL_OOC (5)
+#define VAL_LLC (3)
 void init_vals_pos() {
   for (uint64_t i = 0;i<NB_VALSP;i++) {
+/*
+  6 7 8
+  3 4 5
+  0 1 2
+*/
     valsp_l[i]=0;
     if (IS_SET(i,0)) valsp_l[i]=VAL_C;
     else if (IS_SET(i,9)) valsp_l[i]=-VAL_C;
@@ -547,25 +551,43 @@ void init_vals_pos() {
       if (IS_SET(i,4)) valsp_l[i]=VAL_OC;
       else if (IS_SET(i,13)) valsp_l[i]=-VAL_OC;
       else {
-        if (IS_SET(i,8)) valsp_l[i]+=VAL_LLC;
-        else if (IS_SET(i,17)) valsp_l[i]-=VAL_LLC;
+        if (IS_SET(i,8)) valsp_l[i]+=VAL_OOC;
+        else if (IS_SET(i,17)) valsp_l[i]-=VAL_OOC;
       }
       if (IS_SET(i,1)) valsp_l[i]+=VAL_LC;
       else if (IS_SET(i,10)) valsp_l[i]-=VAL_LC;
-      
       if (IS_SET(i,3)) valsp_l[i]+=VAL_LC;
       else if (IS_SET(i,12)) valsp_l[i]-=VAL_LC;
+      
+      if (IS_SET(i,2)) valsp_l[i]+=VAL_LLC;
+      else if (IS_SET(i,11)) valsp_l[i]-=VAL_LLC;
+      if (IS_SET(i,6)) valsp_l[i]+=VAL_LLC;
+      else if (IS_SET(i,15)) valsp_l[i]-=VAL_LLC;
     }
+/*
+  0 1 2
+  3 4 5
+  6 7 8
+*/
     valsp_r[i]=0;
     if (IS_SET(i,2)) valsp_r[i]=VAL_C;
     else if (IS_SET(i,11)) valsp_r[i]=-VAL_C;
     else {
       if (IS_SET(i,4)) valsp_r[i]=VAL_OC;
-      if (IS_SET(i,13)) valsp_r[i]=-VAL_OC;
+      else if (IS_SET(i,13)) valsp_r[i]=-VAL_OC;
+      else {
+        if (IS_SET(i,6)) valsp_r[i]+=VAL_OOC;
+        else if (IS_SET(i,15)) valsp_r[i]-=VAL_OOC;
+      }
       if (IS_SET(i,1)) valsp_r[i]+=VAL_LC;
-      if (IS_SET(i,10)) valsp_r[i]-=VAL_LC;
+      else if (IS_SET(i,10)) valsp_r[i]-=VAL_LC;
       if (IS_SET(i,5)) valsp_r[i]+=VAL_LC;
-      if (IS_SET(i,14)) valsp_r[i]-=VAL_LC;
+      else if (IS_SET(i,14)) valsp_r[i]-=VAL_LC;
+
+      if (IS_SET(i,0)) valsp_r[i]+=VAL_LLC;
+      else if (IS_SET(i,9)) valsp_r[i]-=VAL_LLC;
+      if (IS_SET(i,8)) valsp_r[i]+=VAL_LLC;
+      else if (IS_SET(i,17)) valsp_r[i]-=VAL_LLC;
     }
   }
 }
@@ -576,22 +598,22 @@ int eval_pos3(uint64_t myb,uint64_t opb) {
   mm=(myb&0x7)|((myb>>5)&0x38)|((myb>>10)&0x1c0);
   om=(opb&0x7)|((opb>>5)&0x38)|((opb>>10)&0x1c0);
   m = mm|(om<<9);
-  //  fprintf(flog,"%018lb %d\n",m,valsp_l[m]);
+//    fprintf(flog,"%018lb %d\n",m,valsp_l[m]);
   ev+=valsp_l[m];
   mm=((myb>>56)&0x7)|((myb>>45)&0x38)|((myb>>34)&0x1c0);
   om=((opb>>56)&0x7)|((opb>>45)&0x38)|((opb>>34)&0x1c0);
   m = mm|(om<<9);
-  //  fprintf(flog,"%018lb %d\n",m,valsp_l[m]);
+//    fprintf(flog,"%018lb %d\n",m,valsp_l[m]);
   ev+=valsp_l[m];
   mm=((myb>>5)&0x7)|((myb>>10)&0x38)|((myb>>15)&0x1c0);
   om=((opb>>5)&0x7)|((opb>>10)&0x38)|((opb>>15)&0x1c0);
   m = mm|(om<<9);
-  //  fprintf(flog,"%018lb %d\n",m,valsp_r[m]);
+//    fprintf(flog,"%018lb %d\n",m,valsp_r[m]);
   ev+=valsp_r[m];
   mm=((myb>>61)&0x7)|((myb>>50)&0x38)|((myb>>39)&0x1c0);
   om=((opb>>61)&0x7)|((opb>>50)&0x38)|((opb>>39)&0x1c0);
   m = mm|(om<<9);
-  //  fprintf(flog,"%018lb %d\n",m,valsp_r[m]);
+//    fprintf(flog,"%018lb %d\n",m,valsp_r[m]);
   ev+=valsp_r[m];
   return ev;
 }
@@ -961,6 +983,8 @@ int main(int argc, char **argv) {
 
   if (argc==4) {
     set_pos(argv[3],&myb,&opb);
+    display(myb,opb);
+    exit(-1);
     /*
     uint64_t n;
     n=0;
