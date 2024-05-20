@@ -505,19 +505,6 @@ int all_moves(uint64_t myb,uint64_t opb,int *moves) {
   return n;
 }
 
-void display(uint64_t wb,uint64_t bb) {
-  for (int j=0;j<=7;j++) {
-    fprintf(flog,"%2d ",8*j);
-    for (int i=0;i<8;i++) {
-      if IS_SET_XY(wb,i,j) fprintf(flog," X ");
-      else if IS_SET_XY(bb,i,j) fprintf(flog," O ");
-      else fprintf(flog," . ");
-    }
-    fprintf(flog,"\n");
-  }
-  fprintf(flog,"    0  1  2  3  4  5  6  7\n");
-  fprintf(flog,"eval_pos=%d\n",eval_pos3(wb,bb));
-}
 
 /*
  There are 18 bits. The first 9 (LSB) represent the bits of the corner
@@ -674,6 +661,20 @@ int eval_lib(uint64_t b,uint64_t es) {
   return libs;
 }
 
+void display(uint64_t wb,uint64_t bb) {
+  for (int j=0;j<=7;j++) {
+    fprintf(flog,"%2d ",8*j);
+    for (int i=0;i<8;i++) {
+      if IS_SET_XY(wb,i,j) fprintf(flog," X ");
+      else if IS_SET_XY(bb,i,j) fprintf(flog," O ");
+      else fprintf(flog," . ");
+    }
+    fprintf(flog,"\n");
+  }
+  fprintf(flog,"    0  1  2  3  4  5  6  7\n");
+  fprintf(flog,"eval_pos=%d\n",eval_pos3(wb,bb));
+}
+
 int16_t eval(uint64_t myb,uint64_t opb) {
   uint64_t es = ~(myb|opb);
 //  int nb = NB_BITS(es);
@@ -715,10 +716,11 @@ bool retrieve_v_hash(uint64_t hv,
                     int16_t *v_inf,int16_t *v_sup,int8_t *bmove,uint8_t dist) {
   uint64_t ind=hv&MASK_H;
   if (hashv[ind].hv==hv) {
-    if ((hashv[ind].dist==dist)
+    if (hashv[ind].dist==dist) {
+      /*
         ||
         ((hashv[ind].v_inf==hashv[ind].v_sup)&&(abs(hashv[ind].v_inf)>=WIN))
-) {
+      */
       *v_inf=hashv[ind].v_inf;
       *v_sup=hashv[ind].v_sup;
       *bmove=hashv[ind].bmove;
@@ -819,7 +821,6 @@ uint64_t compute_hash2(uint64_t myb,uint64_t opb,bool pass) {
 
 int best_move;
 int node=0;
-
 int16_t ab(uint64_t myb,uint64_t opb,
        int16_t alpha,int16_t beta,
        uint8_t depth,uint8_t base,uint8_t maxdepth,
@@ -840,6 +841,7 @@ int16_t ab(uint64_t myb,uint64_t opb,
   uint64_t hv = compute_hash(myb,opb,pass);
   int16_t v_inf,v_sup;
   if (retrieve_v_hash(hv,&v_inf,&v_sup,&nsq,maxdepth-depth)) {
+     //  if (false) {
     if (depth==base) {best_move=nsq;}
     if (v_inf==v_sup) return v_inf; /* Exact evaluation */
     if (v_inf>=beta) return v_inf; /* Beta cut */
@@ -982,9 +984,10 @@ int main(int argc, char **argv) {
 
 
   if (argc==4) {
+    /* Answer is 32 */
     set_pos(argv[3],&myb,&opb);
     display(myb,opb);
-    exit(-1);
+
     /*
     uint64_t n;
     n=0;
@@ -1031,7 +1034,7 @@ int main(int argc, char **argv) {
     */
   }
   else {
-    if (player==1) {
+    if (player==2) {
       set_pawn(&opb,3,4);
       set_pawn(&opb,4,3);
       set_pawn(&myb,3,3);
@@ -1050,79 +1053,87 @@ int main(int argc, char **argv) {
   int16_t evals[128];
   signal(SIGALRM,handler);
   while (playable(myb,opb)||playable(opb,myb)) {
-    if ((player==1)&&(playable(myb,opb))) {
-      clock_t time=clock();
-      int nb_free=NB_BITS(~(myb|opb));
-      fprintf(flog,"nb_free=%d\n",nb_free);
-      int16_t alpha=-MAXV,beta=MAXV,res;
-      timer.it_value.tv_sec=time_play;
-      timer.it_value.tv_usec=0;
-      setitimer(ITIMER_REAL,&timer,NULL);
-      get_out=false;
-      int old_best=INVALID_MOVE;
-      for (uint8_t maxdepth=depth+2;;maxdepth++) {
-      back:
-	best_move=INVALID_MOVE;
-	res = ab(myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
-	double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
-	fprintf(flog,"alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
-		alpha,beta,depth,maxdepth,best_move,res,ftime);
-	if (res==GET_OUT) {
-	  if (best_move==INVALID_MOVE) best_move=old_best;
-	  break;
-	}
-	else {
-	  old_best=best_move;
-	  evals[maxdepth]=res;
-	  if (best_move<0){
-	    fprintf(flog,"Invalid move=%d\n",best_move);
-	    exit(-1);
-	  }
-	  if ((res<=alpha)||(res>=beta)) {alpha=res-1;beta=res+1;goto back;}
-	  if (abs(res)>WIN) break;
-	  if (((res>=evals[maxdepth-1])&&(maxdepth%2==1)) ||
-	      ((res<=evals[maxdepth-1])&&(maxdepth%2==0))) {
-	    alpha=res-3;beta=res+3;
+    if (player==1) {
+      if (playable(myb,opb)) {
+	clock_t time=clock();
+	int nb_free=NB_BITS(~(myb|opb));
+	fprintf(flog,"nb_free=%d\n",nb_free);
+	int16_t alpha=-MAXV,beta=MAXV,res;
+	timer.it_value.tv_sec=time_play;
+	timer.it_value.tv_usec=0;
+	setitimer(ITIMER_REAL,&timer,NULL);
+	get_out=false;
+	int old_best=INVALID_MOVE;
+	for (uint8_t maxdepth=depth+2;;maxdepth++) {
+	back:
+	  best_move=INVALID_MOVE;
+	  res = ab(myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
+	  double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
+	  fprintf(flog,"alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
+		  alpha,beta,depth,maxdepth,best_move,res,ftime);
+	  if (res==GET_OUT) {
+	    best_move=old_best;
+	    break;
 	  }
 	  else {
-	    alpha=evals[maxdepth-1]-3;beta=evals[maxdepth-1]+3;
+	    if ((res>alpha)&&(res<beta)) old_best=best_move;
+	    evals[maxdepth]=res;
+	    if (best_move<0){
+	      fprintf(flog,"Invalid move=%d\n",best_move);
+	      exit(-1);
+	    }
+	    if ((res<=alpha)||(res>=beta)) {alpha=res-1;beta=res+1;goto back;}
+	    if (abs(res)>WIN) {
+	      if (maxdepth==100) break;
+	      else {maxdepth=100;goto back;}
+	    }
+	    if (((res>=evals[maxdepth-1])&&(maxdepth%2==1)) ||
+		((res<=evals[maxdepth-1])&&(maxdepth%2==0))) {
+	      alpha=res-3;beta=res+3;
+	    }
+	    else {
+	      alpha=evals[maxdepth-1]-3;beta=evals[maxdepth-1]+3;
+	    }
 	  }
 	}
+	fprintf(flog,"my_move=%d\n",best_move);
+	printf("%d\n",best_move);
+	play8(best_move,&myb,&opb);
+	remove_move(&allm[revind[best_move]]);
+	display(myb,opb);
       }
-      fprintf(flog,"my_move=%d\n",best_move);
-      printf("%d\n",best_move);
-      play8(best_move,&myb,&opb);
-      remove_move(&allm[revind[best_move]]);
-      display(myb,opb);
+      else {
+	fprintf(flog,"my_move=%d\n",-1);
+	printf("%d\n",-1);
+      }
+      depth++;
     }
     player=1;
-    depth++;
-    if (playable(opb,myb)) {
-      opp_pass=false;
-      int move;
-      int moves[64];
-      int nb=all_moves(opb,myb,moves);
-      fprintf(flog,"moves:");
-      for (int i=0;i<nb;i++)
-	fprintf(flog,"%3d",moves[i]);
-      fprintf(flog,"\n");
-      char *s=NULL;
-      long unsigned int n=0;
-      do {
-	fprintf(flog,"your_move:");
-	long int ret=getline(&s,&n,stdin);
-	if (ret==-1) {
-	  fprintf(flog,"getline failed\n");
-	  exit(-1);
-	}
-	move=atoi(s);
-	fprintf(flog,"move=%d\n",move);
-      } while ((!CHECK(move))||(IS_SET(myb|opb,move))||(!play8(move,&opb,&myb)));
-      remove_move(&allm[revind[move]]);
-      display(myb,opb);
-      free(s);
-    }
+    if (playable(opb,myb)) opp_pass=false;
     else opp_pass=true;
+    int move;
+    int moves[64];
+    int nb=all_moves(opb,myb,moves);
+    fprintf(flog,"moves:");
+    for (int i=0;i<nb;i++)
+      fprintf(flog,"%3d",moves[i]);
+    fprintf(flog,"\n");
+    char *s=NULL;
+    long unsigned int n=0;
+    do {
+      fprintf(flog,"your_move (-1 if you pass):");
+      long int ret=getline(&s,&n,stdin);
+      if (ret==-1) {
+	fprintf(flog,"getline failed\n");
+	exit(-1);
+      }
+      move=atoi(s);
+      fprintf(flog,"move=%d\n",move);
+      if ((opp_pass)&&(move==-1)) break;
+    } while ((!CHECK(move))||(IS_SET(myb|opb,move))||(!play8(move,&opb,&myb)));
+    if (!opp_pass) remove_move(&allm[revind[move]]);
+    display(myb,opb);
+    free(s);
     depth++;
   }
   fprintf(flog,"res=%d\n",NB_BITS(myb)-NB_BITS(opb));
