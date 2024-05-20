@@ -1,3 +1,4 @@
+// clang-15  -O3 -W -Wall -Wconversion bitoth.c
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -6,6 +7,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <signal.h>
+#include <math.h>
 
 /*
  0: /dev/null
@@ -521,9 +523,9 @@ int all_moves(uint64_t myb,uint64_t opb,int *moves) {
 int16_t valsp_l[NB_VALSP],valsp_r[NB_VALSP];
 #define VAL_C (50)
 #define VAL_OC (-25)
-#define VAL_LC (-10)
-#define VAL_OOC (5)
-#define VAL_LLC (3)
+#define VAL_LC (-7)
+#define VAL_OOC (2)
+#define VAL_LLC (4)
 void init_vals_pos() {
   for (uint64_t i = 0;i<NB_VALSP;i++) {
 /*
@@ -976,7 +978,7 @@ int main(int argc, char **argv) {
     exit(-1);
   }
 
-  int time_play=atoi(argv[2]);
+  double time_play=atof(argv[2]);
   if ((time_play<=0)||(time_play>=10000)) {
     fprintf(flog,"Bad time argument\n");
     exit(-1);
@@ -1059,8 +1061,10 @@ int main(int argc, char **argv) {
 	int nb_free=NB_BITS(~(myb|opb));
 	fprintf(flog,"nb_free=%d\n",nb_free);
 	int16_t alpha=-MAXV,beta=MAXV,res;
-	timer.it_value.tv_sec=time_play;
-	timer.it_value.tv_usec=0;
+	double timei;
+	double timef=modf(time_play,&timei);
+	timer.it_value.tv_sec=(time_t)timei;
+	timer.it_value.tv_usec=(suseconds_t)(1000000.0*timef);;
 	setitimer(ITIMER_REAL,&timer,NULL);
 	get_out=false;
 	int old_best=INVALID_MOVE;
