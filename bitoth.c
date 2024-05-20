@@ -67,38 +67,12 @@ int8_t moves[NB_MOVES]={
    9,14,49,54, /* B2 */
    27,28,35,36 /* D4 */
 };
-
-typedef struct _linkm {
-  int8_t m;
-  struct _linkm *next,*prev;
-} linkm;
-linkm allm[NB_MOVES];
-linkm *first;
+uint64_t mask_m;
 int8_t revind[NB_MOVES];
 void init_moves() {
-  for (int8_t i=0;i<NB_MOVES;i++) {
-    allm[i].m=moves[i];
-    if (i>0) allm[i].prev=&allm[i-1];
-    if (i<NB_MOVES-1) allm[i].next=&allm[i+1];
+  for (int8_t i=0;i<NB_MOVES;i++)
     revind[moves[i]]=i;
-  }
-  allm[0].prev=NULL;
-  allm[NB_MOVES-1].next=NULL;
-  first = &allm[0];
 }
-
-void remove_move(linkm *curr) {
-  if (curr->prev!=NULL) curr->prev->next=curr->next;
-  else first=curr->next;
-  if (curr->next!=NULL) curr->next->prev=curr->prev;
-}
-
-void add_move(linkm *curr) {
-  if (curr->prev!=NULL) curr->prev->next=curr;
-  else first=curr;
-  if (curr->next!=NULL) curr->next->prev=curr;
-}
-
 
 // General move masks
 uint64_t masks[64];
@@ -547,7 +521,7 @@ void init_vals_pos() {
       else if (IS_SET(i,10)) valsp_l[i]-=VAL_LC;
       if (IS_SET(i,3)) valsp_l[i]+=VAL_LC;
       else if (IS_SET(i,12)) valsp_l[i]-=VAL_LC;
-      
+
       if (IS_SET(i,2)) valsp_l[i]+=VAL_LLC;
       else if (IS_SET(i,11)) valsp_l[i]-=VAL_LLC;
       if (IS_SET(i,6)) valsp_l[i]+=VAL_LLC;
@@ -693,12 +667,9 @@ int16_t eval(uint64_t myb,uint64_t opb) {
   return (int16_t)(vpos2+vlib);
 }
 
-
-
 #define NB_BITS_H 27
 #define SIZE_H ((uint64_t)1<<NB_BITS_H)
 #define MASK_H (SIZE_H-1)
-
 typedef
 struct
 __attribute__((packed))
@@ -718,16 +689,17 @@ bool retrieve_v_hash(uint64_t hv,
                     int16_t *v_inf,int16_t *v_sup,int8_t *bmove,uint8_t dist) {
   uint64_t ind=hv&MASK_H;
   if (hashv[ind].hv==hv) {
-    if (hashv[ind].dist==dist) {
+    if (hashv[ind].dist==dist)
       /*
         ||
         ((hashv[ind].v_inf==hashv[ind].v_sup)&&(abs(hashv[ind].v_inf)>=WIN))
       */
+      {
       *v_inf=hashv[ind].v_inf;
       *v_sup=hashv[ind].v_sup;
       *bmove=hashv[ind].bmove;
       return true;
-    }
+      }
     *bmove=hashv[ind].bmove;
     return false;
   }
@@ -838,12 +810,10 @@ int16_t ab(uint64_t myb,uint64_t opb,
     return eval(myb,opb);
   }
   int16_t v=-MAXV;
-  bool lpass=true;
-  int8_t lmove=INVALID_MOVE,nsq=INVALID_MOVE;
+  int8_t lmove=PASS,nsq=INVALID_MOVE;
   uint64_t hv = compute_hash(myb,opb,pass);
   int16_t v_inf,v_sup;
   if (retrieve_v_hash(hv,&v_inf,&v_sup,&nsq,maxdepth-depth)) {
-     //  if (false) {
     if (depth==base) {best_move=nsq;}
     if (v_inf==v_sup) return v_inf; /* Exact evaluation */
     if (v_inf>=beta) return v_inf; /* Beta cut */
@@ -853,47 +823,37 @@ int16_t ab(uint64_t myb,uint64_t opb,
   }
   int16_t a=alpha;
   if (nsq==PASS) goto pass;
-  bool flag;
-  if (nsq>=0) flag=true; else flag=false;
-  for (linkm *curr=first;curr!=NULL;curr=curr->next) {
-  int8_t sq;
-  linkm *back;
-  again:
-    if (flag) {
+  uint64_t lm=mask_m;
+  while (lm!=0) {
+    int8_t sq;
+    int ind;
+    if (nsq>=0) {
       sq=nsq;
-      back=&allm[revind[nsq]];
+      ind=revind[sq];
+      nsq=-1;
     }
     else {
-      sq=curr->m;
-      if (sq==nsq) continue;
-      back=curr;
+      ind=IND_BIT(lm)-1;
+      sq=moves[ind];
     }
-    remove_move(back);
+    FLIP(lm,ind);
     uint64_t nmyb=myb,nopb=opb;
     if (play8(sq,&nmyb,&nopb)) {
-      lpass=false;
+      FLIP(mask_m,ind);
       int16_t nv = -ab(nopb,nmyb,-beta,-a,depth+1,base,maxdepth,false);
-      add_move(back);
+      FLIP(mask_m,ind);
       if (get_out) return GET_OUT;
       if (nv>v) {
         v=nv;
         lmove=sq;
         if (depth==base) best_move=sq;
         a=MAX(a,v);
-        if (a>=beta) {
-	  goto fin;
-	}
+        if (a>=beta) goto fin;
       }
     }
-    else add_move(back);
-    if (flag) {
-      flag=false;
-      goto again;
-    }
   }
-pass:
-  if (lpass) {
-    lmove=PASS;
+ pass:
+  if (lmove==PASS) {
     if (pass) {
       v = NB_BITS(myb)-NB_BITS(opb);
       if (v>0) v=WIN+v;
@@ -913,7 +873,7 @@ fin:
 
 void set_pawn(uint64_t *b,int x,int y) {
   SET_XY(*b,x,y);
-  remove_move(&allm[revind[y*8+x]]);
+  FLIP(mask_m,revind[y*8+x]);
 }
 
 void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
@@ -984,12 +944,10 @@ int main(int argc, char **argv) {
     exit(-1);
   }
 
-
+  mask_m=0xffffffffffffffff;
   if (argc==4) {
-    /* Answer is 32 */
     set_pos(argv[3],&myb,&opb);
     display(myb,opb);
-
     /*
     uint64_t n;
     n=0;
@@ -1055,6 +1013,7 @@ int main(int argc, char **argv) {
   int16_t evals[128];
   signal(SIGALRM,handler);
   while (playable(myb,opb)||playable(opb,myb)) {
+    fprintf(flog,"remaining_moves:%d\n",NB_BITS(mask_m));
     if (player==1) {
       if (playable(myb,opb)) {
 	clock_t time=clock();
@@ -1068,13 +1027,15 @@ int main(int argc, char **argv) {
 	setitimer(ITIMER_REAL,&timer,NULL);
 	get_out=false;
 	int old_best=INVALID_MOVE;
+        node=0;
 	for (uint8_t maxdepth=depth+2;;maxdepth++) {
 	back:
 	  best_move=INVALID_MOVE;
 	  res = ab(myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
 	  double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
-	  fprintf(flog,"alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%f\n",
-		  alpha,beta,depth,maxdepth,best_move,res,ftime);
+	  fprintf(flog,
+                  "alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
+		  alpha,beta,depth,maxdepth,best_move,res,ftime,node/ftime);
 	  if (res==GET_OUT) {
 	    best_move=old_best;
 	    break;
@@ -1103,7 +1064,7 @@ int main(int argc, char **argv) {
 	fprintf(flog,"my_move=%d\n",best_move);
 	printf("%d\n",best_move);
 	play8(best_move,&myb,&opb);
-	remove_move(&allm[revind[best_move]]);
+        FLIP(mask_m,revind[best_move]);
 	display(myb,opb);
       }
       else {
@@ -1135,7 +1096,7 @@ int main(int argc, char **argv) {
       fprintf(flog,"move=%d\n",move);
       if ((opp_pass)&&(move==-1)) break;
     } while ((!CHECK(move))||(IS_SET(myb|opb,move))||(!play8(move,&opb,&myb)));
-    if (!opp_pass) remove_move(&allm[revind[move]]);
+    if (!opp_pass) FLIP(mask_m,revind[move]);
     display(myb,opb);
     free(s);
     depth++;
