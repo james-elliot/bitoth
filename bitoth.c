@@ -1,4 +1,4 @@
-// clang-15  -O3 -W -Wall -Wconversion bitoth.c
+// clang-15  -march=native -O3 -W -Wall -Wconversion bitoth.c
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -474,7 +474,8 @@ int all_moves(uint64_t myb,uint64_t opb,int *moves) {
   int n=0;
   while (es) {
     uint64_t nmyb=myb,nopb=opb;
-    int sq = IND_BIT(es)-1;
+//    int sq = IND_BIT(es)-1;
+    int sq = TRAIL_BIT(es);
     FLIP(es,sq);
     if (play8(sq,&nmyb,&nopb)) moves[n++]=sq;
   }
@@ -630,7 +631,8 @@ int eval_pos(uint64_t myb,uint64_t opb) {
 int eval_lib(uint64_t b,uint64_t es) {
   int libs=0;
   while(b) {
-    int sq = IND_BIT(b)-1;
+//    int sq = IND_BIT(b)-1;
+    int sq = TRAIL_BIT(b);
     b^=(uint64_t)1<<sq;
     libs+=NB_BITS(es&masks[sq]);
   }
@@ -833,7 +835,8 @@ int16_t ab(uint64_t myb,uint64_t opb,
       nsq=-1;
     }
     else {
-      ind=IND_BIT(lm)-1;
+//      ind=IND_BIT(lm)-1;
+      ind=TRAIL_BIT(lm);
       sq=moves[ind];
     }
     FLIP(lm,ind);
