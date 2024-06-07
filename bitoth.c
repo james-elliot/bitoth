@@ -449,7 +449,8 @@ int testable(uint64_t r,uint64_t myb,uint64_t opb,bool pl(int,uint64_t*,uint64_t
   uint64_t es = ~(myb|opb);
   int n=0;
   while (es) {
-    int sq = IND_BIT(es)-1;
+//    int sq = IND_BIT(es)-1;
+    int sq = TRAIL_BIT(es);
     FLIP(es,sq);
     uint64_t nmyb=myb,nopb=opb;
     if (pl(sq,&nmyb,&nopb)) n++;
@@ -462,7 +463,8 @@ int testable(uint64_t r,uint64_t myb,uint64_t opb,bool pl(int,uint64_t*,uint64_t
 bool playable(uint64_t myb,uint64_t opb) {
   uint64_t es = ~(myb|opb);
   while (es) {
-    int sq = IND_BIT(es)-1;
+//    int sq = IND_BIT(es)-1;
+    int sq = TRAIL_BIT(es);
     FLIP(es,sq);
     if (play8(sq,&myb,&opb)) return true;
   }
@@ -657,14 +659,9 @@ int16_t eval(uint64_t myb,uint64_t opb) {
   uint64_t es = ~(myb|opb);
 //  int nb = NB_BITS(es);
 //  int vdisc = (NB_BITS(myb)-NB_BITS(opb));
+//  return vdisc;
 //  int vpos = eval_pos2(myb,opb);
   int vpos2= eval_pos3(myb,opb);
-  /*
-  if (vpos!=vpos2) {
-    display(myb,opb);
-    exit(-1);
-  }
-  */
   int vlib = -(eval_lib(myb,es)-eval_lib(opb,es));
   return (int16_t)(vpos2+vlib);
 }
@@ -951,7 +948,7 @@ int main(int argc, char **argv) {
   if (argc==4) {
     set_pos(argv[3],&myb,&opb);
     display(myb,opb);
-    /*
+/*
     uint64_t n;
     n=0;
     clock_t t1;
@@ -994,7 +991,7 @@ int main(int argc, char **argv) {
              n,f1,f2,f3,f4,f5,f6,f7,f8);
     }
     exit(-1);
-    */
+*/
   }
   else {
     if (player==2) {
