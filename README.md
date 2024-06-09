@@ -9,4 +9,4 @@ The evaluation function has not been optimized at all. It is only based on minim
 
 Probably strong enough to defeat most human players.
 
-No optimization for endgame play, but solve 16 empty discs in less than 1s.
+Optimization for endgame play, usually solves W/D/L around 21 empty discs in less than 1s.
