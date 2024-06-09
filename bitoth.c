@@ -871,6 +871,58 @@ fin:
   return v;
 }
 
+int16_t ab2(uint64_t myb,uint64_t opb,
+            int16_t alpha,int16_t beta,
+            uint8_t depth,
+            bool pass) {
+  node++;
+  if (~(myb|opb)==0) {
+    int16_t v = NB_BITS(myb)-NB_BITS(opb);
+    if (v>0) v=WIN+v;
+    else if (v<0) v=-WIN+v;
+    return v;
+  }
+  int16_t v=-MAXV;
+  int8_t lmove=PASS;
+  int16_t a=alpha;
+  uint64_t lm=mask_m;
+  while (lm!=0) {
+    int8_t sq;
+    int ind;
+    ind=TRAIL_BIT(lm);
+    sq=moves[ind];
+    FLIP(lm,ind);
+    uint64_t nmyb=myb,nopb=opb;
+    if (play8(sq,&nmyb,&nopb)) {
+      FLIP(mask_m,ind);
+      int16_t nv = -ab2(nopb,nmyb,-beta,-a,depth+1,false);
+      FLIP(mask_m,ind);
+      if (get_out) return GET_OUT;
+      if (nv>v) {
+        v=nv;
+        lmove=sq;
+        if (depth==0) best_move=sq;
+        a=MAX(a,v);
+        if (a>=beta) goto fin;
+      }
+    }
+  }
+  if (lmove==PASS) {
+    if (pass) {
+      v = NB_BITS(myb)-NB_BITS(opb);
+      if (v>0) v=WIN+v;
+      else if (v<0) v=-WIN+v;
+      return v;
+    }
+    else {
+      v = -ab2(opb,myb,-beta,-a,depth+1,true);
+      if (get_out) return GET_OUT;
+    }
+  }
+fin:
+  return v;
+}
+
 void set_pawn(uint64_t *b,int x,int y) {
   SET_XY(*b,x,y);
   FLIP(mask_m,revind[y*8+x]);
@@ -1014,14 +1066,51 @@ int main(int argc, char **argv) {
   signal(SIGALRM,handler);
   while (playable(myb,opb)||playable(opb,myb)) {
     fprintf(flog,"remaining_moves:%d\n",NB_BITS(mask_m));
+    double timei,timef;
     if (player==1) {
       if (playable(myb,opb)) {
 	clock_t time=clock();
 	int nb_free=NB_BITS(~(myb|opb));
 	fprintf(flog,"nb_free=%d\n",nb_free);
+        if (nb_free<=21) {
+          int old_best=INVALID_MOVE;
+          timef=modf(time_play/2,&timei);
+          timer.it_value.tv_sec=(time_t)timei;
+          timer.it_value.tv_usec=(suseconds_t)(1000000.0*timef);;
+          setitimer(ITIMER_REAL,&timer,NULL);
+          get_out=false;
+          node=0;
+          int res=ab2(myb,opb,-1,1,0,opp_pass);
+          double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
+          fprintf(flog,
+                  "depth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
+                  depth,best_move,res,ftime,node/ftime);
+          if (res!=GET_OUT) {
+            old_best=best_move;
+            timef=modf(time_play-ftime,&timei);
+            timer.it_value.tv_sec=(time_t)timei;
+            timer.it_value.tv_usec=(suseconds_t)(1000000.0*timef);;
+            setitimer(ITIMER_REAL,&timer,NULL);
+            get_out=false;
+            node=0;
+            if (res>0)
+              res=ab2(myb,opb,res,32765,0,opp_pass);
+            else if (res<0)
+              res=ab2(myb,opb,-32765,res,0,opp_pass);
+            else
+              res=0;
+            double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
+            fprintf(flog,
+                    "depth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
+                    depth,best_move,res,ftime,node/ftime);
+            if (res==GET_OUT) best_move=old_best;
+            goto suite;
+          }
+          timef=modf(time_play/2,&timei);
+        }
+        else 
+          timef=modf(time_play,&timei);
 	int16_t alpha=-MAXV,beta=MAXV,res;
-	double timei;
-	double timef=modf(time_play,&timei);
 	timer.it_value.tv_sec=(time_t)timei;
 	timer.it_value.tv_usec=(suseconds_t)(1000000.0*timef);;
 	setitimer(ITIMER_REAL,&timer,NULL);
@@ -1031,7 +1120,7 @@ int main(int argc, char **argv) {
 	for (uint8_t maxdepth=depth+2;;maxdepth++) {
 	back:
 	  best_move=INVALID_MOVE;
-	  res = ab(myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
+          res = ab(myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
 	  double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
 	  fprintf(flog,
                   "alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
@@ -1061,6 +1150,7 @@ int main(int argc, char **argv) {
 	    }
 	  }
 	}
+      suite:
 	fprintf(flog,"my_move=%d\n",best_move);
 	printf("%d\n",best_move);
 	play8(best_move,&myb,&opb);
