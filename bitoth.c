@@ -18,7 +18,7 @@
  1: file
  otherwise: stderr
 */
-#define LOG_OUTPUT 1
+#define LOG_OUTPUT 2
 FILE *flog;
 
 #define MAX(a,b)\
@@ -71,7 +71,7 @@ int8_t moves[NB_MOVES]={
    9,14,49,54, /* B2 */
    27,28,35,36 /* D4 */
 };
-uint64_t mask_m;
+//uint64_t mask_m;
 int8_t revind[NB_MOVES];
 void init_moves() {
   for (int8_t i=0;i<NB_MOVES;i++)
@@ -797,8 +797,8 @@ uint64_t compute_hash2(uint64_t myb,uint64_t opb,bool pass) {
 }
 
 int best_move;
-uint64_t node=0;
-int16_t ab(uint64_t myb,uint64_t opb,
+volatile uint64_t node=0;
+int16_t ab(uint64_t mask_m,uint64_t myb,uint64_t opb,
        int16_t alpha,int16_t beta,
        uint8_t depth,uint8_t base,uint8_t maxdepth,
        bool pass) {
@@ -843,9 +843,7 @@ int16_t ab(uint64_t myb,uint64_t opb,
     FLIP(lm,ind);
     uint64_t nmyb=myb,nopb=opb;
     if (play8(sq,&nmyb,&nopb)) {
-      FLIP(mask_m,ind);
-      int16_t nv = -ab(nopb,nmyb,-beta,-a,depth+1,base,maxdepth,false);
-      FLIP(mask_m,ind);
+      int16_t nv = -ab(mask_m^((uint64_t)1<<ind),nopb,nmyb,-beta,-a,depth+1,base,maxdepth,false);
       if (get_out) return GET_OUT;
       if (nv>v) {
         v=nv;
@@ -866,7 +864,7 @@ int16_t ab(uint64_t myb,uint64_t opb,
       return v;
     }
     else {
-      v = -ab(opb,myb,-beta,-a,depth+1,base,maxdepth,true);
+      v = -ab(mask_m,opb,myb,-beta,-a,depth+1,base,maxdepth,true);
       if (get_out) return GET_OUT;
     }
   }
@@ -875,7 +873,7 @@ fin:
   return v;
 }
 
-int16_t ab2(uint64_t myb,uint64_t opb,
+int16_t ab2(uint64_t mask_m,uint64_t myb,uint64_t opb,
             int16_t alpha,int16_t beta,
             uint8_t depth,
             bool pass) {
@@ -898,9 +896,7 @@ int16_t ab2(uint64_t myb,uint64_t opb,
     FLIP(lm,ind);
     uint64_t nmyb=myb,nopb=opb;
     if (play8(sq,&nmyb,&nopb)) {
-      FLIP(mask_m,ind);
-      int16_t nv = -ab2(nopb,nmyb,-beta,-a,depth+1,false);
-      FLIP(mask_m,ind);
+      int16_t nv = -ab2(mask_m^((uint64_t)1<<ind),nopb,nmyb,-beta,-a,depth+1,false);
       if (get_out) return GET_OUT;
       if (nv>v) {
         v=nv;
@@ -920,19 +916,19 @@ int16_t ab2(uint64_t myb,uint64_t opb,
       else if (v<0) v=-WIN+v;
     }
     else {
-      v = -ab2(opb,myb,-beta,-a,depth+1,true);
+      v = -ab2(mask_m,opb,myb,-beta,-a,depth+1,true);
       if (get_out) return GET_OUT;
     }
   }
   return v;
 }
 
-void set_pawn(uint64_t *b,int x,int y) {
+void set_pawn(uint64_t *mask_m,uint64_t *b,int x,int y) {
   SET_XY(*b,x,y);
-  FLIP(mask_m,revind[y*8+x]);
+  FLIP(*mask_m,revind[y*8+x]);
 }
 
-void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
+void set_pos(char *name,uint64_t *mask_m,uint64_t *wb,uint64_t *bb) {
   char *s=NULL;
   long unsigned int n=0;
   FILE *fp=fopen(name,"r");
@@ -946,10 +942,10 @@ void set_pos(char *name,uint64_t *wb,uint64_t *bb) {
     for (int i=0;i<=7;i++) {
       switch (s[4+3*i]) {
       case 'X' :
-        set_pawn(wb,i,j);
+        set_pawn(mask_m,wb,i,j);
         break;
       case 'O' :
-        set_pawn(bb,i,j);
+        set_pawn(mask_m,bb,i,j);
         break;
       case '.' :
         break;
@@ -1005,9 +1001,9 @@ int main(int argc, char **argv) {
     exit(-1);
   }
 
-  mask_m=0xffffffffffffffff;
+  uint64_t mask_m=0xffffffffffffffff;
   if (argc==4) {
-    set_pos(argv[3],&myb,&opb);
+    set_pos(argv[3],&mask_m,&myb,&opb);
     display(myb,opb);
 /*
     uint64_t n;
@@ -1056,16 +1052,16 @@ int main(int argc, char **argv) {
   }
   else {
     if (player==2) {
-      set_pawn(&opb,3,4);
-      set_pawn(&opb,4,3);
-      set_pawn(&myb,3,3);
-      set_pawn(&myb,4,4);
+      set_pawn(&mask_m,&opb,3,4);
+      set_pawn(&mask_m,&opb,4,3);
+      set_pawn(&mask_m,&myb,3,3);
+      set_pawn(&mask_m,&myb,4,4);
     }
     else {
-      set_pawn(&myb,3,4);
-      set_pawn(&myb,4,3);
-      set_pawn(&opb,3,3);
-      set_pawn(&opb,4,4);
+      set_pawn(&mask_m,&myb,3,4);
+      set_pawn(&mask_m,&myb,4,3);
+      set_pawn(&mask_m,&opb,3,3);
+      set_pawn(&mask_m,&opb,4,4);
     }
   }
   display(myb,opb);
@@ -1096,7 +1092,7 @@ int main(int argc, char **argv) {
           setitimer(ITIMER_REAL,&timer,NULL);
           get_out=false;
           node=0;
-          int16_t res=ab2(myb,opb,-1,1,0,opp_pass);
+          int16_t res=ab2(mask_m,myb,opb,-1,1,0,opp_pass);
           double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
           fprintf(flog,
                   "depth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
@@ -1110,9 +1106,9 @@ int main(int argc, char **argv) {
             get_out=false;
             node=0;
             if (res>0)
-              res=ab2(myb,opb,res,32765,0,opp_pass);
+              res=ab2(mask_m,myb,opb,res,32765,0,opp_pass);
             else if (res<0)
-              res=ab2(myb,opb,-32765,res,0,opp_pass);
+              res=ab2(mask_m,myb,opb,-32765,res,0,opp_pass);
             else
               res=0;
             double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
@@ -1136,7 +1132,7 @@ int main(int argc, char **argv) {
 	for (uint8_t maxdepth=depth+2;;maxdepth++) {
 	back:
 	  best_move=INVALID_MOVE;
-          res = ab(myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
+          res = ab(mask_m,myb,opb,alpha,beta,depth,depth,maxdepth,opp_pass);
 	  double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
 	  fprintf(flog,
                   "alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
