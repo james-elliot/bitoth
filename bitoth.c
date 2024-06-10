@@ -48,7 +48,7 @@ FILE *flog;
 #define LEAD_BIT(b)  (__builtin_clzl(b))
 #define IND_BIT(b)   ((int8_t)(__builtin_ffsl((int64_t)b)))
 
-bool get_out = false;
+volatile bool get_out = false;
 void handler(__attribute__((unused))int signum) {get_out=true;};
 
 #define GET_OUT (-32767)
