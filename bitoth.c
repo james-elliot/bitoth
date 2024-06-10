@@ -803,7 +803,7 @@ int16_t ab(uint64_t mask_m,uint64_t myb,uint64_t opb,
        uint8_t depth,uint8_t base,uint8_t maxdepth,
        bool pass) {
   node++;
-  if (~(myb|opb)==0) {
+  if (mask_m==0) {
     int16_t v = NB_BITS(myb)-NB_BITS(opb);
     if (v>0) v=WIN+v;
     else if (v<0) v=-WIN+v;
@@ -878,7 +878,7 @@ int16_t ab2(uint64_t mask_m,uint64_t myb,uint64_t opb,
             uint8_t depth,
             bool pass) {
   node++;
-  if (~(myb|opb)==0) {
+  if (mask_m==0) {
     int16_t v = NB_BITS(myb)-NB_BITS(opb);
     if (v>0) v=WIN+v;
     else if (v<0) v=-WIN+v;
@@ -1082,8 +1082,7 @@ int main(int argc, char **argv) {
     if (player==1) {
       if (playable(myb,opb)) {
 	clock_t time=clock();
-	int nb_free=NB_BITS(~(myb|opb));
-	fprintf(flog,"nb_free=%d\n",nb_free);
+	int nb_free=NB_BITS(mask_m);
         if (nb_free<=nb_start) {
           int old_best=INVALID_MOVE;
           timef=modf(time_play/2,&timei);
