@@ -1,4 +1,8 @@
 // clang-15  -march=native -O3 -W -Wall -Wconversion bitoth.c
+// 21:3.89
+// 22:5.37
+// 23:24
+// 24:124
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -11,10 +15,10 @@
 
 /*
  0: /dev/null
- 1: log.txt
+ 1: file
  otherwise: stderr
 */
-#define LOG_OUTPUT 2
+#define LOG_OUTPUT 1
 FILE *flog;
 
 #define MAX(a,b)\
@@ -793,7 +797,7 @@ uint64_t compute_hash2(uint64_t myb,uint64_t opb,bool pass) {
 }
 
 int best_move;
-int node=0;
+uint64_t node=0;
 int16_t ab(uint64_t myb,uint64_t opb,
        int16_t alpha,int16_t beta,
        uint8_t depth,uint8_t base,uint8_t maxdepth,
@@ -902,8 +906,10 @@ int16_t ab2(uint64_t myb,uint64_t opb,
         v=nv;
         lmove=sq;
         if (depth==0) best_move=sq;
-        a=MAX(a,v);
-        if (a>=beta) goto fin;
+        if (v>a) {
+          a=v;
+          if (a>=beta) return v;
+        }
       }
     }
   }
@@ -912,14 +918,12 @@ int16_t ab2(uint64_t myb,uint64_t opb,
       v = NB_BITS(myb)-NB_BITS(opb);
       if (v>0) v=WIN+v;
       else if (v<0) v=-WIN+v;
-      return v;
     }
     else {
       v = -ab2(opb,myb,-beta,-a,depth+1,true);
       if (get_out) return GET_OUT;
     }
   }
-fin:
   return v;
 }
 
@@ -966,7 +970,12 @@ int main(int argc, char **argv) {
 #if LOG_OUTPUT==0
   flog=fopen("/dev/null","w");
 #elif LOG_OUTPUT==1
-  flog=fopen("log.txt","w");
+  char filename[100]="logXXXXXX";
+  int ofd;
+  /* Open log file */
+  ofd=mkstemp(filename);
+  flog=fdopen(ofd,"w");
+  setvbuf(flog,NULL,_IONBF,0);
 #else
   flog=stderr;
 #endif
@@ -1060,19 +1069,26 @@ int main(int argc, char **argv) {
     }
   }
   display(myb,opb);
+  int nb_start;
+  if (time_play<=1) nb_start=21;
+  else if (time_play<=5) nb_start=22;
+  else if (time_play<=25) nb_start=23;
+  else if (time_play<=125) nb_start=24;
+  else nb_start=25;
+  fprintf(flog,"nb_start:%d\n",nb_start);
   uint8_t depth=0;
   bool opp_pass=false;
   int16_t evals[128];
   signal(SIGALRM,handler);
   while (playable(myb,opb)||playable(opb,myb)) {
-    fprintf(flog,"remaining_moves:%d\n",NB_BITS(mask_m));
+    fprintf(flog,"empty_squares:%d\n",NB_BITS(mask_m));
     double timei,timef;
     if (player==1) {
       if (playable(myb,opb)) {
 	clock_t time=clock();
 	int nb_free=NB_BITS(~(myb|opb));
 	fprintf(flog,"nb_free=%d\n",nb_free);
-        if (nb_free<=21) {
+        if (nb_free<=nb_start) {
           int old_best=INVALID_MOVE;
           timef=modf(time_play/2,&timei);
           timer.it_value.tv_sec=(time_t)timei;
@@ -1080,11 +1096,11 @@ int main(int argc, char **argv) {
           setitimer(ITIMER_REAL,&timer,NULL);
           get_out=false;
           node=0;
-          int res=ab2(myb,opb,-1,1,0,opp_pass);
+          int16_t res=ab2(myb,opb,-1,1,0,opp_pass);
           double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
           fprintf(flog,
                   "depth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
-                  depth,best_move,res,ftime,node/ftime);
+                  depth,best_move,res,ftime,(double)node/ftime);
           if (res!=GET_OUT) {
             old_best=best_move;
             timef=modf(time_play-ftime,&timei);
@@ -1102,7 +1118,7 @@ int main(int argc, char **argv) {
             double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
             fprintf(flog,
                     "depth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
-                    depth,best_move,res,ftime,node/ftime);
+                    depth,best_move,res,ftime,(double)node/ftime);
             if (res==GET_OUT) best_move=old_best;
             goto suite;
           }
@@ -1124,7 +1140,7 @@ int main(int argc, char **argv) {
 	  double ftime=(double)(clock()-time)/(double)CLOCKS_PER_SEC;
 	  fprintf(flog,
                   "alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
-		  alpha,beta,depth,maxdepth,best_move,res,ftime,node/ftime);
+		  alpha,beta,depth,maxdepth,best_move,res,ftime,(double)node/ftime);
 	  if (res==GET_OUT) {
 	    best_move=old_best;
 	    break;
