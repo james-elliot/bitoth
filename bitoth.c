@@ -39,6 +39,7 @@ FILE *flog;
 
 #define CHECK(x) (((x)>=0)&&((x)<64))
 #define IS_SET(a,x) ((a)&((uint64_t)1<<((x))))
+#define BIT(b) ((uint64_t)1<<b)
 #define SET(a,x) ((a)|=((uint64_t)1<<((x))))
 #define CLEAR(a,x) ((a)&= ~((uint64_t)1<<((x))))
 #define FLIP(a,x) ((a)^=((uint64_t)1<<((x))))
@@ -47,6 +48,7 @@ FILE *flog;
 #define TRAIL_BIT(b) (__builtin_ctzl(b))
 #define LEAD_BIT(b)  (__builtin_clzl(b))
 #define IND_BIT(b)   ((int8_t)(__builtin_ffsl((int64_t)b)))
+
 
 volatile bool get_out = false;
 void handler(__attribute__((unused))int signum) {get_out=true;};
@@ -71,7 +73,7 @@ int8_t moves[NB_MOVES]={
    9,14,49,54, /* B2 */
    27,28,35,36 /* D4 */
 };
-//uint64_t mask_m;
+
 int8_t revind[NB_MOVES];
 void init_moves() {
   for (int8_t i=0;i<NB_MOVES;i++)
@@ -670,7 +672,7 @@ int16_t eval(uint64_t myb,uint64_t opb) {
   return (int16_t)(vpos2+vlib);
 }
 
-#define NB_BITS_H 27
+#define NB_BITS_H 22
 #define SIZE_H ((uint64_t)1<<NB_BITS_H)
 #define MASK_H (SIZE_H-1)
 typedef
@@ -688,16 +690,11 @@ hash_t *hashv;
 #define PASS (-2)
 #define INVALID_MOVE (-1)
 
-bool retrieve_v_hash(uint64_t hv,
-                    int16_t *v_inf,int16_t *v_sup,int8_t *bmove,uint8_t dist) {
+bool retrieve_v_hash(uint64_t hv,int16_t *v_inf,int16_t *v_sup,
+                     int8_t *bmove,uint8_t dist) {
   uint64_t ind=hv&MASK_H;
   if (hashv[ind].hv==hv) {
-    if (hashv[ind].dist==dist)
-      /*
-        ||
-        ((hashv[ind].v_inf==hashv[ind].v_sup)&&(abs(hashv[ind].v_inf)>=WIN))
-      */
-      {
+    if (hashv[ind].dist==dist) {
       *v_inf=hashv[ind].v_inf;
       *v_sup=hashv[ind].v_sup;
       *bmove=hashv[ind].bmove;
@@ -825,6 +822,7 @@ int16_t ab(uint64_t mask_m,uint64_t myb,uint64_t opb,
     beta=MIN(beta,v_sup);
   }
   int16_t a=alpha;
+//  if (depth==base) fprintf(flog,"nsq=%d\n",nsq);
   if (nsq==PASS) goto pass;
   uint64_t lm=mask_m;
   while (lm!=0) {
@@ -836,21 +834,22 @@ int16_t ab(uint64_t mask_m,uint64_t myb,uint64_t opb,
       nsq=-1;
     }
     else {
-//      ind=IND_BIT(lm)-1;
       ind=TRAIL_BIT(lm);
       sq=moves[ind];
     }
     FLIP(lm,ind);
     uint64_t nmyb=myb,nopb=opb;
     if (play8(sq,&nmyb,&nopb)) {
-      int16_t nv = -ab(mask_m^((uint64_t)1<<ind),nopb,nmyb,-beta,-a,depth+1,base,maxdepth,false);
+      int16_t nv = -ab(mask_m^BIT(ind),nopb,nmyb,-beta,-a,depth+1,base,maxdepth,false);
       if (get_out) return GET_OUT;
       if (nv>v) {
         v=nv;
         lmove=sq;
         if (depth==base) best_move=sq;
-        a=MAX(a,v);
-        if (a>=beta) goto fin;
+        if (v>a) {
+          a=v;
+          if (a>=beta) goto fin;
+        }
       }
     }
   }
@@ -896,7 +895,7 @@ int16_t ab2(uint64_t mask_m,uint64_t myb,uint64_t opb,
     FLIP(lm,ind);
     uint64_t nmyb=myb,nopb=opb;
     if (play8(sq,&nmyb,&nopb)) {
-      int16_t nv = -ab2(mask_m^((uint64_t)1<<ind),nopb,nmyb,-beta,-a,depth+1,false);
+      int16_t nv = -ab2(mask_m^BIT(ind),nopb,nmyb,-beta,-a,depth+1,false);
       if (get_out) return GET_OUT;
       if (nv>v) {
         v=nv;
@@ -963,6 +962,7 @@ void set_pos(char *name,uint64_t *mask_m,uint64_t *wb,uint64_t *bb) {
 int main(int argc, char **argv) {
   struct itimerval timer={{0,0},{0,0}};
   uint64_t myb=0,opb=0;
+
 #if LOG_OUTPUT==0
   flog=fopen("/dev/null","w");
 #elif LOG_OUTPUT==1
@@ -971,11 +971,9 @@ int main(int argc, char **argv) {
   /* Open log file */
   ofd=mkstemp(filename);
   flog=fdopen(ofd,"w");
-  setvbuf(flog,NULL,_IONBF,0);
 #else
   flog=stderr;
 #endif
-
   if (flog==NULL) {
     fprintf(stderr,"Can't open log\n");
     exit(-1);
@@ -1119,7 +1117,7 @@ int main(int argc, char **argv) {
           }
           timef=modf(time_play/2,&timei);
         }
-        else 
+        else
           timef=modf(time_play,&timei);
 	int16_t alpha=-MAXV,beta=MAXV,res;
 	timer.it_value.tv_sec=(time_t)timei;
@@ -1137,7 +1135,7 @@ int main(int argc, char **argv) {
                   "alpha=%6d beta=%6d depth=%3d maxdepth=%3d move=%3d res=%6d time=%8.4f nodes/s= %4.2e\n",
 		  alpha,beta,depth,maxdepth,best_move,res,ftime,(double)node/ftime);
 	  if (res==GET_OUT) {
-	    best_move=old_best;
+	    if (best_move==INVALID_MOVE) best_move=old_best;
 	    break;
 	  }
 	  else {
