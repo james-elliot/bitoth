@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <time.h>
 #include <string.h>
 #include <sys/time.h>
@@ -672,9 +673,9 @@ int16_t eval(uint64_t myb,uint64_t opb) {
   return (int16_t)(vpos2+vlib);
 }
 
-#define NB_BITS_H 22
-#define SIZE_H ((uint64_t)1<<NB_BITS_H)
-#define MASK_H (SIZE_H-1)
+int NB_BITS_H;
+uint64_t SIZE_H;
+uint64_t MASK_H;
 typedef
 struct
 __attribute__((packed))
@@ -758,6 +759,9 @@ void init_hash() {
 }
 
 void init_all() {
+  SIZE_H=(uint64_t)1<<NB_BITS_H;
+  MASK_H=SIZE_H-1;
+
   init_dep2();
   init_dep3();
   init_deps4();
@@ -963,6 +967,7 @@ int main(int argc, char **argv) {
   struct itimerval timer={{0,0},{0,0}};
   uint64_t myb=0,opb=0;
 
+
 #if LOG_OUTPUT==0
   flog=fopen("/dev/null","w");
 #elif LOG_OUTPUT==1
@@ -980,6 +985,14 @@ int main(int argc, char **argv) {
   }
   setvbuf(flog,NULL,_IONBF,0);
   setvbuf(stdout,NULL,_IONBF,0);
+
+  int64_t nb_procs=sysconf(_SC_NPROCESSORS_CONF);
+  uint64_t cache_l3_size = (uint64_t)sysconf(_SC_LEVEL3_CACHE_SIZE);
+  uint64_t nb_objs = cache_l3_size / (sizeof(hash_t));
+  NB_BITS_H = (int)((sizeof nb_objs) << 3) - (int)LEAD_BIT(nb_objs) - 1;
+  fprintf(flog, "Nb_procs:%ld Level3_cache_size:%ld nb_elements:%ld bits:%d\n",
+	  nb_procs,cache_l3_size,nb_objs, NB_BITS_H);
+
 
   init_all();
   if ((argc<3)||(argc>4)) {
