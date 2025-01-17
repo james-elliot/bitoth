@@ -1205,12 +1205,12 @@ int main(int argc, char **argv) {
 	exit(-1);
       }
       move=atoi(s);
+      free(s);
       fprintf(flog,"move=%d\n",move);
       if ((opp_pass)&&(move==-1)) break;
     } while ((!CHECK(move))||(IS_SET(myb|opb,move))||(!play8(move,&opb,&myb)));
     if (!opp_pass) FLIP(mask_m,revind[move]);
     display(myb,opb);
-    free(s);
     depth++;
   }
   fprintf(flog,"res=%d\n",NB_BITS(myb)-NB_BITS(opb));
